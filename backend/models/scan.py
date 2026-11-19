@@ -158,6 +158,25 @@ class ScanRepository:
             if self.db.db_path != ":memory:":
                 conn.close()
 
+    def count_active_scans(self, engine: Optional[str] = None) -> int:
+        """Count number of scans currently in active states (SCANNING, PARSING)."""
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            if engine:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM scans WHERE status IN ('SCANNING', 'PARSING') AND engine = ?;",
+                    (engine,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM scans WHERE status IN ('SCANNING', 'PARSING');"
+                )
+            return cursor.fetchone()[0]
+        finally:
+            if self.db.db_path != ":memory:":
+                conn.close()
+
     def get_scan(self, scan_id: str) -> Optional[ScanJob]:
         conn = self.db.get_connection()
         try:

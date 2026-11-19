@@ -598,6 +598,32 @@
        - `GET /api/v1/schemas/scan-options?engine=invalid` -> `HTTP 400`
        - `GET /api/v1/schemas/scan-options` (thiếu engine) -> `HTTP 400`
 
+### T3.3: API tạo lượt quét (Validation, trần đồng thời, sinh token, gọi bộ khởi chạy)
+- **Đã làm**:
+  - Tạo `backend/validation/scan_validator.py`:
+    - Kiểm tra siêu dữ liệu cơ bản: `engine`, `project_id`, `created_by`.
+    - Kiểm tra trường lạ: Từ chối ngay các trường lạ không nằm trong lược đồ của engine.
+    - Kiểm tra mục tiêu cho Acunetix: `target_url` là bắt buộc (từ chối lượt Acunetix thiếu URL); kiểm tra định dạng cú pháp; chặn thông tin đăng nhập trong URL (`user:pass@host`); chặn query param chứa token nhạy cảm (`token`, `api_key`, `secret`, `auth`); kiểm tra URL nằm trong danh sách Allowlist được cấp phép.
+    - Kiểm tra tệp tải lên: Giới hạn kích thước và chỉ chấp nhận đuôi tệp cho phép (`.lsr`, `.json`, `.yaml`, `.yml`, `.xml`, `.har`).
+  - Tạo `backend/services/launcher.py`: Định nghĩa giao diện `LauncherInterface` và lớp `MockLauncher` phục vụ kiểm thử đơn vị độc lập.
+  - Tạo `backend/services/scan_service.py`:
+    - Kiểm tra trần đồng thời (`MAX_CONCURRENT_SCANS`, mặc định 1): Đếm các lượt đang ở trạng thái `SCANNING` hoặc `PARSING`. Vượt trần từ chối ngay với HTTP 429 (`CONCURRENCY_LIMIT_EXCEEDED`).
+    - Sinh webhook token ngẫu nhiên an toàn (`secrets.token_urlsafe(32)`), băm SHA-256 (`token_hash`) và chỉ lưu bản băm vào DB bảng `scans` với trạng thái ban đầu `SCANNING`.
+    - Tách biệt `ScanOptions` thành phần thường (lưu DB với version 1.0) và phần bí mật (chuyển cho launcher rồi xóa sạch khỏi bộ nhớ BE).
+    - Gọi launcher khởi tạo pod/job.
+  - Tạo `backend/api/scan_handler.py`: Endpoint `POST /api/v1/scans` trả về HTTP 201 Created kèm `scan_id` khi thành công, hoặc HTTP 400/429 khi có lỗi.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t33_create_scan_api.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t33_create_scan_api.py` PASS 100% tất cả 7 test suites:
+    1. Tạo lượt quét hợp lệ: Trả về HTTP 201 Created, trạng thái `SCANNING`, token băm trong DB, zero secret trong phản hồi API và cấu hình DB.
+    2. Lượt Acunetix thiếu `target_url`: Bị từ chối với HTTP 400 Bad Request.
+    3. URL chứa thông tin đăng nhập (`user:pass@host`) hoặc query param token: Bị từ chối với HTTP 400 Bad Request.
+    4. URL ngoài danh sách Allowlist: Bị từ chối với HTTP 400 Bad Request.
+    5. Cấu hình có trường lạ: Bị từ chối với HTTP 400 Bad Request.
+    6. Tệp tải lên sai định dạng (`.exe`): Bị từ chối với HTTP 400 Bad Request.
+    7. Trần đồng thời = 1: Lượt 1 đang chạy, lượt 2 gửi đến bị từ chối ngay lập tức với HTTP 429 `CONCURRENCY_LIMIT_EXCEEDED`; sau khi lượt 1 chuyển `COMPLETED`, lượt 2 được chấp nhận thành công.
+
+
 
 
 
