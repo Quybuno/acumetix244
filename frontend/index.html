@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Review - Màn hình Quét lỗ hổng bảo mật (Scans)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Top Navigation Bar -->
+        <header class="top-nav">
+            <div class="nav-brand">
+                <span class="brand-logo">🛡️</span>
+                <span class="brand-name">Deep Review</span>
+                <span class="brand-badge">SecOps Platform</span>
+            </div>
+            <div class="nav-project-info">
+                <span class="project-label">Dự án:</span>
+                <span class="project-name" id="current-project">Thanh toán trực tuyến (proj-banking)</span>
+            </div>
+            <div class="nav-user-info">
+                <span class="user-role-badge" id="current-user-role">SECURITY_ENGINEER</span>
+                <span class="user-name" id="current-user-name">cuong.sec</span>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-title-group">
+                    <h1>Lịch sử và Điều khiển Quét An ninh (Scans)</h1>
+                    <p class="subtitle">Khởi tạo và theo dõi các lượt kiểm thử bảo mật mã nguồn (SAST) và ứng dụng thực tế (DAST)</p>
+                </div>
+            </div>
+
+            <!-- Scan Controls Toolbar (Task T4.1) -->
+            <section class="scan-toolbar-card" aria-label="Bảng điều khiển quét">
+                <div class="toolbar-group">
+                    <!-- Engine Selection Dropdown -->
+                    <div class="control-item engine-control">
+                        <label for="engine-select" class="control-label">
+                            <span class="label-text">Engine Quét</span>
+                            <span class="label-required">*</span>
+                        </label>
+                        <select id="engine-select" name="engine" class="form-select select-engine" aria-describedby="engine-help">
+                            <option value="fortify" selected>Fortify (SAST)</option>
+                            <option value="acunetix">Acunetix (DAST)</option>
+                            <option value="burpsuite" disabled class="option-coming-soon">Burp Suite (Sắp có)</option>
+                            <option value="nessus" disabled class="option-coming-soon">Nessus (Sắp có)</option>
+                        </select>
+                        <div id="engine-help" class="control-help-text">Chọn công cụ thực hiện kiểm thử</div>
+                    </div>
+
+                    <!-- Branch Selection Dropdown (placed right next to Engine) -->
+                    <div class="control-item branch-control">
+                        <label for="branch-select" class="control-label">
+                            <span class="label-text">Nhánh (Branch)</span>
+                        </label>
+                        <select id="branch-select" name="branch" class="form-select select-branch">
+                            <option value="main" selected>main</option>
+                            <option value="develop">develop</option>
+                            <option value="feature/payment-v2">feature/payment-v2</option>
+                            <option value="release/v1.0">release/v1.0</option>
+                        </select>
+                        <div id="branch-explanation" class="control-help-text">Nhánh Git chứa mã nguồn để quét SAST</div>
+                    </div>
+
+                    <!-- Action Button: Scan -->
+                    <div class="control-item action-control">
+                        <button type="button" id="btn-scan" class="btn btn-primary btn-scan">
+                            <span class="btn-icon">⚡</span>
+                            <span class="btn-text">Bắt đầu quét</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scan History Table Section -->
+            <section class="scan-history-card">
+                <div class="card-header">
+                    <h2>Danh sách lượt quét</h2>
+                    <div class="header-actions">
+                        <button id="btn-refresh-history" class="btn btn-secondary btn-sm">Làm mới</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table scan-history-table" id="scans-table">
+                        <thead>
+                            <tr>
+                                <th>Mã lượt quét</th>
+                                <th>Engine</th>
+                                <th>Branch / Target</th>
+                                <th>Người tạo</th>
+                                <th>Trạng thái</th>
+                                <th>Thời gian</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scans-table-body">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- JavaScript Application Entrypoint -->
+    <script src="js/app.js"></script>
+</body>
+</html>

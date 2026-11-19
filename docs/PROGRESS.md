@@ -912,6 +912,30 @@
   - Chạy `python scripts/test_t314_comprehensive_backend.py` PASS 100% toàn bộ 5 module.
   - Chạy hồi quy toàn bộ chuỗi kịch bản kiểm thử Giai đoạn 3 (T3.1 đến T3.14): PASS 100% tất cả các bài kiểm thử.
 
+## Giai đoạn 4: Frontend
+
+### T4.1: Ô Engine cạnh ô Branch (Fortify và Acunetix chọn được, Burp Suite và Nessus hiện mờ "sắp có", mặc định Fortify)
+- **Đã làm**:
+  - Tạo cấu trúc thư mục giao diện người dùng Deep Review: `frontend/`, `frontend/css/`, `frontend/js/`.
+  - Xây dựng `frontend/index.html`:
+    - Thanh điều khiển quét (`.scan-toolbar-card`): Đặt ô lựa chọn Engine (`#engine-select`) ngay cạnh ô lựa chọn Nhánh (`#branch-select`) và nút Quét (`#btn-scan`).
+    - Cấu hình 4 lựa chọn Engine:
+      - `fortify`: Fortify SAST (mặc định được chọn, chọn được).
+      - `acunetix`: Acunetix DAST (chọn được).
+      - `burpsuite`: Burp Suite (Sắp có) - có thuộc tính `disabled`, không thể chọn.
+      - `nessus`: Nessus (Sắp có) - có thuộc tính `disabled`, không thể chọn.
+  - Xây dựng `frontend/css/style.css`:
+    - Định dạng giao diện chuẩn SecOps Deep Review (Dark theme: slate/blue).
+    - Styling chuyên biệt cho các lựa chọn chưa kích hoạt (`.option-coming-soon`, `option:disabled`): màu chữ xám mờ (`#64748b`), in nghiêng, con trỏ chuột `not-allowed`.
+  - Xây dựng `frontend/js/app.js`:
+    - Khởi tạo `DeepReviewApp` và cấu hình hằng số `SCANNER_ENGINES` chuẩn hóa trạng thái `isDefault`, `enabled`.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t41_engine_select.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t41_engine_select.py` PASS 100% cả 3 nhóm kiểm thử:
+    1. HTML Structure: Ô Engine nằm cạnh ô Branch trong toolbar; Fortify và Acunetix kích hoạt; Burp Suite và Nessus mang thuộc tính `disabled` và nhãn `Sắp có`.
+    2. CSS Styling: Quy tắc làm mờ hiển thị và `cursor: not-allowed` cho các engine sắp có.
+    3. JS Controller: Cấu hình `SCANNER_ENGINES` và giá trị mặc định là `fortify`.
+
 
 
 
