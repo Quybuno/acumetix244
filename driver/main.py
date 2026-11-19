@@ -15,6 +15,9 @@ if str(BASE_DIR) not in sys.path:
 
 from driver.config import load_config
 from driver.logger import setup_logger
+from driver.client import AcunetixClient
+
+EXIT_CODE_ACUNETIX_NOT_READY = 10
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deep Review Acunetix Scanner Driver")
@@ -26,6 +29,7 @@ def parse_args():
     parser.add_argument("--acunetix-url", default=None, help="Acunetix API base URL")
     parser.add_argument("--inputs-dir", default=None, help="Directory containing input files (.lsr, openapi)")
     parser.add_argument("--log-file", default=None, help="Optional path to write log output")
+    parser.add_argument("--ready-timeout", type=int, default=60, help="Timeout in seconds waiting for Acunetix API readiness")
     return parser.parse_args()
 
 def main():
@@ -61,7 +65,13 @@ def main():
     masked_config = config.to_masked_dict()
     logger.info(f"Active configuration (masked): {json.dumps(masked_config, indent=2)}")
 
-    logger.info("T2.1: Driver skeleton, config parsing, and secret-masked structured logging verified.")
+    # 4. Wait for Acunetix API readiness (Task T2.2)
+    client = AcunetixClient(base_url=config.acunetix_url, logger=logger)
+    if not client.wait_for_ready(timeout_seconds=args.ready_timeout, poll_interval=2.0):
+        logger.error(f"FATAL: Acunetix API failed to become ready within {args.ready_timeout}s.")
+        sys.exit(EXIT_CODE_ACUNETIX_NOT_READY)
+
+    logger.info("Acuentix API readiness check passed successfully.")
     return 0
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@
 | T1.9 | Hoàn thành | 2026-11-19 | Hàm get_pod_status(scan_id) trả về cấu trúc JSON chuẩn: trạng thái pod, mã thoát của driver, danh sách container thiếu. Sẵn sàng cho BE tích hợp. | Không |
 | T1.10 | Hoàn thành | 2026-11-19 | Xây dựng hai script CLI launch.py và cleanup.py chạy tay với driver giả. Thấy trọn vẹn vòng đời dựng, chạy, driver thoát và dọn sạch 100%. | Không |
 | T2.1 | Hoàn thành | 2026-11-19 | Dựng khung dự án driver (driver/): đọc cấu hình/secrets, ghi log có cấu trúc gắn scan_id, che phủ 100% bí mật (SecretMaskingFilter & mask_data). | Không |
+| T2.2 | Hoàn thành | 2026-11-19 | Chờ API Acunetix sẵn sàng bằng thăm dò lặp lại có hạn chờ (Insecure TLS). Quá hạn thoát mã lỗi 10 (ACUNETIX_NOT_READY), không treo. | Không |
 
 ## Chi tiết từng task
 
@@ -320,3 +321,15 @@
     - Cấu hình in ra hiển thị `[REDACTED]` tại toàn bộ các trường nhạy cảm.
     - Quét toàn bộ stdout, stderr và tệp `driver.log`: 100% không chứa bất kỳ chuỗi mật khẩu/token/key thô nào (0 rò rỉ).
     - Driver kết thúc với mã thoát 0.
+
+### T2.2: Chờ API Acunetix sẵn sàng bằng thăm dò lặp lại có hạn chờ
+- **Đã làm**:
+  - Xây dựng lớp `AcunetixClient` trong `driver/client.py`:
+    - Cấu hình SSL context Insecure TLS (`verify_mode=CERT_NONE`) tương thích với chứng chỉ tự ký nội bộ của Acunetix theo T0.8.
+    - Phương thức `probe_health()`: gửi yêu cầu `GET /api/v1/info` thăm dò phản hồi từ backend Acunetix.
+    - Phương thức `wait_for_ready(timeout_seconds, poll_interval)`: lặp lại việc kiểm tra sau mỗi khoảng thời gian định kỳ. Nếu quá hạn `timeout_seconds`, ghi log cảnh báo và trả về `False`, đảm bảo tiến trình driver không bao giờ bị treo vô tận.
+  - Tích hợp vào `driver/main.py`: nếu API Acunetix không sẵn sàng khi hết thời gian chờ, driver chủ động ghi log lỗi chí mạng và kết thúc ngay với mã thoát riêng `10` (`EXIT_CODE_ACUNETIX_NOT_READY`).
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t22_readiness.py`:
+    - **Trường hợp thành công**: Kiểm tra trực tiếp với instance Acunetix đang chạy tại `https://127.0.0.1:8888`. Driver phát hiện API sẵn sàng sau 0.55s, ghi nhận `Acunetix API is READY` và thoát mã `0`.
+    - **Trường hợp quá hạn**: Kiểm tra với endpoint không tồn tại `https://127.0.0.1:59999` với hạn chờ 4 giây. Driver thực hiện thăm dò lặp lại, phát hiện quá hạn sau đúng 4.52s, ghi log `Readiness check timed out` và kết thúc với mã lỗi `10` mà không hề bị treo hay block tiến trình.
