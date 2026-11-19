@@ -10,8 +10,9 @@ from typing import Tuple, Dict, Any, Optional
 from backend.services.webhook_service import WebhookService, WebhookError
 
 class WebhookApiHandler:
-    def __init__(self, webhook_service: WebhookService):
+    def __init__(self, webhook_service: WebhookService, auto_parse: bool = False):
         self.webhook_service = webhook_service
+        self.auto_parse = auto_parse
 
     def handle_request(
         self,
@@ -41,7 +42,8 @@ class WebhookApiHandler:
             try:
                 res = self.webhook_service.process_webhook(
                     headers=headers_in or {},
-                    body_bytes=body_bytes
+                    body_bytes=body_bytes,
+                    auto_parse=self.auto_parse
                 )
                 body = json.dumps(res, ensure_ascii=False).encode("utf-8")
                 return 200, headers_out, body

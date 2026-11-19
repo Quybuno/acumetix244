@@ -892,6 +892,26 @@
     4. Service Integration: Tích hợp thông suốt giữa `ScanService`, `ScanStateMachine`, `ScanReconciler` và `MetricsCollector`.
     5. GET /api/v1/metrics Endpoint: Phục vụ HTTP 200, trả về đầy đủ báo cáo metrics và cảnh báo tương ứng với tham số ngưỡng.
 
+### T3.14: Kiểm thử BE toàn diện không cần Acunetix thật
+- **Đã làm**:
+  - Xây dựng bộ kiểm thử tích hợp toàn diện `scripts/test_t314_comprehensive_backend.py` gồm 5 module kiểm thử độc lập:
+    1. **Module 1 (ScanOptions)**: Xác minh lược đồ, validation (bắt buộc target_url, kiểm tra allowlist, cấm credentials/tokens trong URL), phân tách segregation (`non_secret_config` lưu DB và `secret_data` chuyển cho launcher), kiểm tra xóa sạch secrets khỏi bộ nhớ (`OptionsSegregator.purge_secrets`).
+    2. **Module 2 (ReportParser)**: Đọc các JSON mẫu thực tế từ Giai đoạn 0 (`sample_webapp_vulnerabilities.json`, `sample_api_vulnerabilities.json`), chuyển đổi sang `UnifiedReport`, ánh xạ 5 mức nghiêm trọng, trích xuất CWE/CVE/CVSS/URL, xử lý an toàn các payload hỏng (malformed JSON, empty payload, non-list, corrupt item) ném `ParseException` có mã `PARSE_FAILED` mà không làm sập BE.
+    3. **Module 3 (ScanStateMachine)**: Xác minh chuyển đổi một chiều `SCANNING` -> `PARSING` -> `COMPLETED`, chuyển sang `FAILED` bắt buộc kèm mã lỗi hợp lệ, tính bất biến tuyệt đối của trạng thái cuối (`COMPLETED` và `FAILED`), cấm nhảy cóc và đi lùi.
+    4. **Module 4 (End-to-End Backend Flow với Mock Driver)**: Kiểm thử toàn bộ vòng đời không cần Acunetix thật:
+       - Tạo scan qua HTTP `POST /api/v1/scans` (nhận 201 Created).
+       - Thử nghiệm vượt trần đồng thời (scan thứ 2 bị từ chối dứt khoát 429).
+       - Mock driver gửi kết quả qua HTTP `POST /api/v1/webhook` mang token raw và payload báo cáo mẫu.
+       - Webhook API so băm token constant-time, chuyển `PARSING`, tự động parse và chuyển sang `COMPLETED`, lưu kết quả vào `scan_results`.
+       - Gọi `GET /api/v1/scans/{id}` nhận HTTP 200 với đầy đủ kết quả báo cáo, xác nhận ZERO token hay mật khẩu rò rỉ.
+       - Trần đồng thời được giải phóng: tạo scan mới thành công.
+       - Reconciler tự động phát hiện driver biến mất, đóng lượt với mã `JOB_LOST`.
+       - Endpoint `GET /api/v1/metrics` phản ánh chính xác số lượt, durations và cảnh báo.
+    5. **Module 5 (DockerLauncher với Dummy Driver)**: Xác minh giao diện `DockerLauncher(use_dummy_driver=True)` hỗ trợ chạy dummy container mà không cần máy chủ Acunetix thật.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t314_comprehensive_backend.py` PASS 100% toàn bộ 5 module.
+  - Chạy hồi quy toàn bộ chuỗi kịch bản kiểm thử Giai đoạn 3 (T3.1 đến T3.14): PASS 100% tất cả các bài kiểm thử.
+
 
 
 

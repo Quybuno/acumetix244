@@ -190,6 +190,7 @@ class MockLauncher(LauncherInterface):
         self.launched_jobs[scan_id] = {
             "scan_id": scan_id,
             "has_secrets": bool(secrets),
+            "webhook_token": str(secrets.get("webhook_token", "")) if secrets else "",
             "inputs_count": len(inputs),
             "options": options,
             "status": "RUNNING",
