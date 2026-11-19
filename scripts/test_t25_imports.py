@@ -133,7 +133,8 @@ def main():
         "--secrets-file", str(sec_file),
         "--options-file", str(opt_file),
         "--inputs-dir", str(inputs_dir),
-        "--ready-timeout", "10"
+        "--ready-timeout", "10",
+        "--no-scan"
     ]
 
     print("Running driver command with inputs directory...")

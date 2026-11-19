@@ -21,6 +21,8 @@ EXIT_CODE_ACUNETIX_NOT_READY = 10
 EXIT_CODE_AUTH_FAILED = 11
 EXIT_CODE_CONFIG_FAILED = 12
 EXIT_CODE_IMPORT_FAILED = 13
+EXIT_CODE_SCAN_TIMEOUT = 14
+EXIT_CODE_SCAN_FAILED = 15
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deep Review Acunetix Scanner Driver")
@@ -33,7 +35,10 @@ def parse_args():
     parser.add_argument("--inputs-dir", default=None, help="Directory containing input files (.lsr, openapi)")
     parser.add_argument("--log-file", default=None, help="Optional path to write log output")
     parser.add_argument("--ready-timeout", type=int, default=60, help="Timeout in seconds waiting for Acunetix API readiness")
+    parser.add_argument("--scan-timeout", type=int, default=1800, help="Maximum scan duration in seconds before aborting")
+    parser.add_argument("--poll-interval", type=float, default=3.0, help="Polling interval in seconds")
     parser.add_argument("--clean-target", action="store_true", help="Delete target immediately after configuration (for testing/dry-run)")
+    parser.add_argument("--no-scan", action="store_true", help="Skip scan trigger (dry-run / setup only)")
     return parser.parse_args()
 
 def main():
@@ -133,6 +138,49 @@ def main():
                 except Exception:
                     pass
             sys.exit(EXIT_CODE_IMPORT_FAILED)
+
+    # 8. Start Scan & Poll Status (Task T2.6)
+    scan_id = None
+    if not args.no_scan:
+        try:
+            profile = config.scan_options.get("profile")
+            scan_id = client.start_scan(target_id=target_id, profile_id=profile)
+            logger.info(f"Scan triggered successfully with ID {scan_id}. Polling until completion...")
+
+            final_status, scan_info = client.poll_scan(
+                scan_id=scan_id,
+                timeout_seconds=args.scan_timeout,
+                poll_interval=args.poll_interval
+            )
+
+            if final_status == "timeout":
+                logger.error(f"FATAL: Scan {scan_id} exceeded maximum timeout ({args.scan_timeout}s).")
+                if target_id and args.clean_target:
+                    try:
+                        client.delete_target(target_id)
+                    except Exception:
+                        pass
+                sys.exit(EXIT_CODE_SCAN_TIMEOUT)
+
+            if final_status in ["failed", "abort", "aborted"]:
+                logger.error(f"FATAL: Scan {scan_id} finished with failure status '{final_status}'.")
+                if target_id and args.clean_target:
+                    try:
+                        client.delete_target(target_id)
+                    except Exception:
+                        pass
+                sys.exit(EXIT_CODE_SCAN_FAILED)
+
+            logger.info(f"Scan {scan_id} finished polling with status '{final_status}'.")
+
+        except Exception as e:
+            logger.error(f"FATAL: Scan execution failed: {e}")
+            if target_id and args.clean_target:
+                try:
+                    client.delete_target(target_id)
+                except Exception:
+                    pass
+            sys.exit(EXIT_CODE_SCAN_FAILED)
 
     if args.clean_target and target_id:
         logger.info(f"Cleaning up target {target_id} (--clean-target set)...")

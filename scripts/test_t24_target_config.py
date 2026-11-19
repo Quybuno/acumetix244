@@ -83,7 +83,8 @@ def main():
         "--acunetix-url", acx_url,
         "--secrets-file", str(sec_file),
         "--options-file", str(opt_file),
-        "--ready-timeout", "10"
+        "--ready-timeout", "10",
+        "--no-scan"
     ]
 
     print("Running driver command...")

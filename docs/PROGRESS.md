@@ -391,3 +391,20 @@
     - Gọi trực tiếp `GET /api/v1/targets/{target_id}/configuration/imports` trên Acunetix: tệp `openapi_juice.json` được ghi nhận với `status: True`.
     - Gọi trực tiếp `GET /api/v1/targets/{target_id}/configuration`: trường `login.kind` đã tự động chuyển sang `sequence`.
     - Dọn dẹp target thành công, không có bất kỳ mật khẩu hay token nào rò rỉ trong log. Driver kết thúc với mã thoát 0.
+
+### T2.6: Tạo lượt quét chạy ngay và hỏi trạng thái định kỳ
+- **Đã làm**:
+  - Mở rộng lớp `AcunetixClient` trong `driver/client.py`:
+    - `start_scan(target_id, profile_id)`: kích hoạt lượt quét chạy ngay qua `POST /api/v1/scans` với lịch `schedule: {disable: false, start_date: null}`, trả về `scan_id`.
+    - `get_scan(scan_id)`: lấy thông tin chi tiết phiên quét qua `GET /api/v1/scans/{scan_id}` (trạng thái `scheduled`, `queued`, `starting`, `processing`, `completed`, `aborted`, `failed`, tỉ lệ tiến độ %, và cờ `manual_intervention`).
+    - `abort_scan(scan_id)`: gửi lệnh dừng khẩn cấp qua `POST /api/v1/scans/{scan_id}/abort`.
+    - `delete_scan(scan_id)`: xóa bản ghi scan qua `DELETE /api/v1/scans/{scan_id}`.
+    - `poll_scan(scan_id, timeout_seconds, poll_interval)`: vòng lặp thăm dò trạng thái định kỳ, ghi log thay đổi tiến độ theo thời gian thực. Tự động phát hiện khi quá trần thời gian (`elapsed > timeout_seconds`) để gọi `abort_scan` và trả về trạng thái `"timeout"`.
+  - Cập nhật `driver/main.py`:
+    - Thêm tham số `--scan-timeout` (mặc định 1800s), `--poll-interval` (mặc định 3.0s), `--no-scan` (cho chế độ dry-run/setup only).
+    - Tích hợp Bước 8 vào luồng chính: khởi tạo scan, thăm dò tiến độ. Nếu quá trần thời gian, driver chủ động hủy scan và kết thúc với mã lỗi `14` (`EXIT_CODE_SCAN_TIMEOUT`). Nếu gặp lỗi kết thúc thất bại, thoát mã `15` (`EXIT_CODE_SCAN_FAILED`).
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t26_scan_lifecycle.py`:
+    - **Test Case 1 (Quét thành công)**: Khởi tạo lượt quét với hồ sơ `crawl_only`, driver ghi nhận tiến trình chuyển từ `scheduled` -> `queued` -> `processing` -> `completed` (100%) sau 12.1 giây, thoát mã `0`.
+    - **Test Case 2 (Quá trần thời gian & Abort)**: Đặt trần timeout cực ngắn 5s cho lượt quét `Full Scan`. Driver phát hiện quá hạn sau 5.1s, lập tức gửi lệnh abort tới Acunetix (`HTTP 204`), dọn dẹp target và kết thúc chính xác với mã lỗi `14` (`SCAN_TIMEOUT`).
+    - Toàn bộ bí mật/mật khẩu không bị rò rỉ trong stdout/stderr/log.

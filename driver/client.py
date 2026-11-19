@@ -431,3 +431,122 @@ class AcunetixClient:
         self.logger.info(f"Deleting target {target_id}...")
         status, _ = self.request(f"/api/v1/targets/{target_id}", method="DELETE")
         return status in [200, 204]
+
+    def start_scan(self, target_id: str, profile_id: Optional[str] = None) -> str:
+        """
+        Trigger an immediate scan for target_id using profile_id.
+        Returns scan_id.
+        """
+        resolved_pid = resolve_profile_id(profile_id)
+        scan_payload = {
+            "target_id": target_id,
+            "profile_id": resolved_pid,
+            "schedule": {
+                "disable": False,
+                "start_date": None,
+                "time_sensitive": False
+            }
+        }
+        status, resp = self.request("/api/v1/scans", method="POST", data=scan_payload)
+        if status not in [200, 201] or not isinstance(resp, dict) or "scan_id" not in resp:
+            raise ValueError(f"Failed to trigger scan: HTTP {status}, response: {resp}")
+
+        scan_id = resp["scan_id"]
+        self.logger.info(f"Scan triggered successfully: scan_id={scan_id} profile_id={resolved_pid}")
+        return scan_id
+
+    def get_scan(self, scan_id: str) -> Dict[str, Any]:
+        """
+        Get scan status and details.
+        """
+        status, data = self.request(f"/api/v1/scans/{scan_id}")
+        if status != 200 or not isinstance(data, dict):
+            raise ValueError(f"Failed to get scan {scan_id}: HTTP {status}, response: {data}")
+        return data
+
+    def abort_scan(self, scan_id: str) -> bool:
+        """
+        Abort an active scan.
+        """
+        try:
+            status, resp = self.request(f"/api/v1/scans/{scan_id}/abort", method="POST")
+            if status in [200, 204, 409]:
+                self.logger.info(f"Scan {scan_id} abort processed (HTTP {status}).")
+                return True
+            self.logger.warning(f"Unexpected status aborting scan {scan_id}: HTTP {status}")
+            return False
+        except Exception as e:
+            self.logger.warning(f"Error while aborting scan {scan_id}: {e}")
+            return False
+
+    def delete_scan(self, scan_id: str) -> bool:
+        """
+        Delete a scan record.
+        """
+        try:
+            status, _ = self.request(f"/api/v1/scans/{scan_id}", method="DELETE")
+            return status in [200, 204]
+        except Exception as e:
+            self.logger.warning(f"Error deleting scan {scan_id}: {e}")
+            return False
+
+    def poll_scan(
+        self,
+        scan_id: str,
+        timeout_seconds: int = 1800,
+        poll_interval: float = 3.0
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Periodically poll scan status until completed, aborted, failed or timed out.
+        Returns (final_status, scan_info).
+        final_status in ["completed", "failed", "aborted", "timeout", "manual_intervention"].
+        """
+        start_time = time.monotonic()
+        self.logger.info(f"Beginning polling for scan {scan_id} (timeout={timeout_seconds}s, interval={poll_interval}s)...")
+
+        last_logged_status = None
+        last_logged_prog = None
+
+        while True:
+            elapsed = time.monotonic() - start_time
+            if elapsed > timeout_seconds:
+                self.logger.error(
+                    f"Scan {scan_id} exceeded maximum timeout of {timeout_seconds}s "
+                    f"(elapsed: {elapsed:.1f}s). Aborting scan..."
+                )
+                self.abort_scan(scan_id)
+                try:
+                    scan_info = self.get_scan(scan_id)
+                except Exception:
+                    scan_info = {}
+                return "timeout", scan_info
+
+            scan_info = self.get_scan(scan_id)
+            current_session = scan_info.get("current_session") or {}
+            status = (current_session.get("status") or "").lower()
+            progress = current_session.get("progress")
+            manual_intervention = scan_info.get("manual_intervention", False)
+
+            # Log when status or progress changes
+            if status != last_logged_status or progress != last_logged_prog:
+                self.logger.info(
+                    f"Scan progress: status='{status}' progress={progress}% "
+                    f"(elapsed: {elapsed:.1f}s)"
+                )
+                last_logged_status = status
+                last_logged_prog = progress
+
+            if manual_intervention:
+                self.logger.warning(f"Scan {scan_id} flagged manual_intervention=True! Aborting scan...")
+                self.abort_scan(scan_id)
+                return "manual_intervention", scan_info
+
+            if status == "completed":
+                self.logger.info(f"Scan {scan_id} completed successfully in {elapsed:.1f}s.")
+                return "completed", scan_info
+
+            if status in ["failed", "abort", "aborted"]:
+                self.logger.error(f"Scan {scan_id} finished with terminal status: '{status}'.")
+                return status, scan_info
+
+            time.sleep(poll_interval)
