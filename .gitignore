@@ -1,0 +1,7 @@
+.env
+*.lic
+*.key
+*.token
+*.dat
+secrets/
+tmp/
