@@ -494,3 +494,21 @@
       - Khi quét quá hạn (timeout): Thoát chính xác mã `14`.
       - Khi webhook thất bại hết số lần thử: Thoát chính xác mã `50`.
     - Quét log: Không có rò rỉ mật khẩu/token.
+
+### T2.12: Đóng gói driver thành Docker image non-root
+- **Đã làm**:
+  - Tạo `driver/Dockerfile`:
+    - Sử dụng base image tối giản `python:3.12-alpine`.
+    - Tạo group `driver` (GID 1000) và user `driver` (UID 1000), thư mục làm việc `/app`.
+    - Phân quyền sở hữu toàn bộ mã nguồn driver cho UID 1000 (`chown -R driver:driver /app`).
+    - Thiết lập chỉ thị `USER driver:driver` (non-root) để tuân thủ OpenShift Restricted SCC và Docker security best practices.
+    - Cấu hình `ENTRYPOINT ["python", "-m", "driver.main"]`.
+  - Viết kịch bản kiểm thử toàn diện `scripts/test_t212_driver_image.py`:
+    - Kiểm tra build image: Docker image `deepreview-acunetix-driver:local` build thành công với dung lượng tối ưu ~74.6MB (không thư viện bên ngoài).
+    - Kiểm tra định danh người dùng: Chạy `id` bên trong container xác nhận chính xác `uid=1000(driver) gid=1000(driver)`.
+    - Kiểm tra thực thi CLI: Chạy `--help` hiển thị đầy đủ tùy chọn của driver với mã thoát `0`.
+    - Kiểm tra chạy thực tế với volume mounts và mock arguments: Container thực thi chính xác và thoát đúng mã chuẩn khi không có cấu hình.
+- **Kết quả & Bằng chứng**:
+  - Kịch bản `scripts/test_t212_driver_image.py` chạy PASS 100% tất cả 4/4 bài kiểm tra.
+  - Image sẵn sàng để tích hợp vào kiến trúc Pod giả (Giai đoạn 1) và khởi chạy thông qua Launcher ở Giai đoạn 3.
+
