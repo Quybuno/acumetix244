@@ -8,6 +8,8 @@
 | T0.2 | Hoàn thành | 2026-11-19 | Chạy container sạch không mount volume, xác thực đăng nhập tự động qua API POST /api/v1/me/login thành công (HTTP 204), không cần giao diện. | Lưu ý cấp quyền thư mục license cho acunetix user |
 | T0.3 | Hoàn thành | 2026-11-19 | Kích hoạt license tự động qua file (license_info.json, wa_data.dat) không qua UI. API /api/v1/info xác nhận activated=true, hạn đến năm 2123. | Không |
 | T0.4 | Hoàn thành | 2026-11-19 | Lấy thông tin xác thực API bằng lệnh (API key & Session token). Ghi rõ đặc tả header gửi trong HTTP request. | Không |
+| T0.5 | Hoàn thành | 2026-11-19 | Trích xuất toàn bộ đặc tả OpenAPI chính thức từ bản dựng Acunetix, thu thập chính xác tên trường các API quét, cấu hình và báo cáo. | Không |
+| T0.6 | Hoàn thành | 2026-11-19 | Lập tài liệu đặc tả chuỗi gọi API và kiểm chứng bằng script tự động hóa chuỗi đầy đủ: Target -> Config -> Scan -> Poll -> Abort -> Delete. | Không |
 
 ## Chi tiết từng task
 
@@ -49,18 +51,23 @@
     1. **Phương thức API Key (Khuyên dùng cho Driver)**:
        - Lấy bằng lệnh qua GraphQL mutation: `POST https://127.0.0.1:8888/graphql/` với body `{"query": "mutation { generateApiKey }"}`.
        - Hoặc thiết lập trực tiếp trong cơ sở dữ liệu qua SQL `UPDATE users SET api_key='...'`.
-       - Cách gửi vào header:
-         ```http
-         X-Auth: <api_key>
-         ```
-         *(Không cần gửi cookie `ui_session`, không phụ thuộc session timeout).*
+       - Cách gửi vào header: `X-Auth: <api_key>`.
     2. **Phương thức Session Token**:
-       - Lấy qua API: `POST https://127.0.0.1:8888/api/v1/me/login` với body `{"email": "admin@acunetix.com", "password": "<sha256_password>", "remember_me": false}`.
-       - Trả về header `X-Auth` và cookie `ui_session`.
-       - Cách gửi vào header:
-         ```http
-         X-Auth: <token>
-         Cookie: ui_session=<token>
-         ```
+       - Lấy qua API: `POST https://127.0.0.1:8888/api/v1/me/login`.
+       - Cách gửi vào header: `X-Auth: <token>` và `Cookie: ui_session=<token>`.
 - **Kết quả & Bằng chứng**:
   - Đã gọi thử `GET /api/v1/targets`, `GET /api/v1/scans`, `GET /api/v1/info` với header `X-Auth: 1986ad8c0a5b3df4d7028d5f3c06e936cc6423db254c54503b2a9510552130f6c` thành công đạt HTTP `200 OK`.
+
+### T0.5: Danh sách lời gọi API với tên trường thật
+- **Đã làm**:
+  - Tìm thấy và trích xuất file định nghĩa OpenAPI / Swagger 2.0 chính thức từ Acunetix (`Acunetix-API-Documentation.yaml`).
+  - Xác định chính xác 110 API endpoints, lược đồ tham số, request/response payload của các đối tượng Target, Configuration, Scan, Vulnerability và Statistics.
+- **Kết quả & Bằng chứng**:
+  - Lưu trữ tài liệu đặc tả API chính thức tại `docs/Acunetix-API-Documentation.yaml`.
+
+### T0.6: Chuỗi gọi API làm đặc tả cho Driver và kiểm chứng bằng script
+- **Đã làm**:
+  - Viết tài liệu đặc tả chuỗi gọi API tuần tự dành cho Driver tại `docs/acunetix-api-sequence.md`.
+  - Viết script Python `scripts/verify_api_sequence.py` thực thi chuỗi đầy đủ: Healthcheck -> Create Target -> Patch Config -> Trigger Scan -> Poll Status -> Abort -> Delete Target.
+- **Kết quả & Bằng chứng**:
+  - Script chạy thành công từ đầu đến cuối (`test_standalone` trả về 200, 201, 204 tương ứng ở từng bước).
