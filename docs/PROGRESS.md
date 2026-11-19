@@ -25,6 +25,7 @@
 | T1.8 | Hoàn thành | 2026-11-19 | Dọn sạch toàn bộ container, volume, thư mục bí mật và tệp tạm theo nhãn scan-id=<mã>. Không làm ảnh hưởng container khác trên host. | Không |
 | T1.9 | Hoàn thành | 2026-11-19 | Hàm get_pod_status(scan_id) trả về cấu trúc JSON chuẩn: trạng thái pod, mã thoát của driver, danh sách container thiếu. Sẵn sàng cho BE tích hợp. | Không |
 | T1.10 | Hoàn thành | 2026-11-19 | Xây dựng hai script CLI launch.py và cleanup.py chạy tay với driver giả. Thấy trọn vẹn vòng đời dựng, chạy, driver thoát và dọn sạch 100%. | Không |
+| T2.1 | Hoàn thành | 2026-11-19 | Dựng khung dự án driver (driver/): đọc cấu hình/secrets, ghi log có cấu trúc gắn scan_id, che phủ 100% bí mật (SecretMaskingFilter & mask_data). | Không |
 
 ## Chi tiết từng task
 
@@ -305,3 +306,17 @@
   - [x] **Tệp tạm**: Thư mục `tmp/scans/<mã>` bị xóa sạch 100%, không sót thư mục `secrets`, `inputs`, `logs` nào (`Leak check: 0 temporary scan dirs`).
   - [x] **Tính ổn định**: 18 container khác trên host không bị ảnh hưởng, máy host phản hồi mượt mà.
 - **Kết luận Cổng 2**: **ĐẠT (PASSED 100%)** - Toàn bộ Giai đoạn 1 đã hoàn thành xuất sắc. Sẵn sàng sang Giai đoạn 2 (Viết Driver).
+
+### T2.1: Dựng khung dự án driver, đọc cấu hình và ghi log có cấu trúc che bí mật
+- **Đã làm**:
+  - Khởi tạo package `driver/` với cấu trúc module chuyên biệt:
+    - `driver/logger.py`: Cung cấp `StructuredFormatter` định dạng chuẩn ISO-8601 kèm `[scan_id=<mã>]`, `SecretMaskingFilter` chặn đứng rò rỉ chuỗi bí mật, và hàm `mask_data` đệ quy che các trường nhạy cảm (`api_key`, `token`, `password`, `secret`, `authorization`, header value).
+    - `driver/config.py`: Định nghĩa `DriverConfig` và hàm `load_config` nạp cấu hình từ `credentials.json`, options, và tham số CLI; trích xuất tự động danh sách chuỗi bí mật cần che chắn.
+    - `driver/main.py`: Điểm vào chính của Driver tiếp nhận tham số dòng lệnh, khởi tạo logger và in ra cấu hình đã được che mờ toàn bộ bí mật.
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử tự động `scripts/test_t21_driver.py`:
+    - Tạo cấu hình chứa đầy đủ các trường nhạy cảm: `api_key`, `admin_password`, `webhook_token`, `target_credentials` và `custom_headers`.
+    - Driver khởi động thành công, in ra log chuẩn cấu trúc `[ISO-TIMESTAMP] [INFO ] [scan_id=test-t21-scan]`.
+    - Cấu hình in ra hiển thị `[REDACTED]` tại toàn bộ các trường nhạy cảm.
+    - Quét toàn bộ stdout, stderr và tệp `driver.log`: 100% không chứa bất kỳ chuỗi mật khẩu/token/key thô nào (0 rò rỉ).
+    - Driver kết thúc với mã thoát 0.
