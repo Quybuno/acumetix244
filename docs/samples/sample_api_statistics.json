@@ -1,0 +1,462 @@
+{
+  "scanning_app": {
+    "wvs": {
+      "main": {
+        "vulns": [
+          {
+            "name": "Sensitive pages could be cached",
+            "time": "2026-11-19T02:28:37.374351+00:00",
+            "vt_id": "e52da8c8-7780-f429-f326-3184bdc42ebb",
+            "vuln_id": "4033538775618421964",
+            "severity": 1,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          },
+          {
+            "name": "Permissions-Policy header not implemented",
+            "time": "2026-11-19T02:28:36.767898+00:00",
+            "vt_id": "bd2ff718-596b-a1cd-3b08-6e61d4b3d8da",
+            "vuln_id": "4033538770518148297",
+            "severity": 0,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          },
+          {
+            "name": "Insecure Frame (External)",
+            "time": "2026-11-19T02:28:36.669651+00:00",
+            "vt_id": "058e75e4-4f79-59f0-895d-d351c49ed3ea",
+            "vuln_id": "4033538769696064710",
+            "severity": 1,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          },
+          {
+            "name": "HTTP Strict Transport Security (HSTS) Policy Not Enabled",
+            "time": "2026-11-19T02:28:36.607073+00:00",
+            "vt_id": "34a6c791-c497-27d5-7272-6a968e9fdccb",
+            "vuln_id": "4033538769175971011",
+            "severity": 2,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          },
+          {
+            "name": "Missing object-src in CSP Declaration",
+            "time": "2026-11-19T02:28:18.708540+00:00",
+            "vt_id": "c24affbc-feb9-49c7-841c-5427ba38a10d",
+            "vuln_id": "4033538619028276416",
+            "severity": 0,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          }
+        ],
+        "status": "finished",
+        "duration": 1757,
+        "messages": [
+          {
+            "data": "",
+            "kind": "finished",
+            "time": "2026-11-19T02:53:27.400357+00:00",
+            "level": -1,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          },
+          {
+            "data": "Imported url http://petstore.swagger.io/v2/user/login is out of scan scope. Create a new Target and add it as an Additional Host.",
+            "kind": "importer_out_of_scope",
+            "time": "2026-11-19T02:24:09.904889+00:00",
+            "level": 1,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          },
+          {
+            "data": "",
+            "kind": "antivirus_not_found",
+            "time": "2026-11-19T02:24:09.852625+00:00",
+            "level": 1,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          },
+          {
+            "data": "",
+            "kind": "scanning",
+            "time": "2026-11-19T02:24:09.668699+00:00",
+            "level": -1,
+            "target_info": {
+              "host": "petstore.swagger.io",
+              "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+            }
+          }
+        ],
+        "progress": 100,
+        "web_scan_status": {
+          "locations": 29,
+          "request_count": 29130,
+          "avg_response_time": 55,
+          "max_response_time": 32180
+        },
+        "status_statistics": {
+          "operationStatsByRun": [
+            {
+              "number_of_runs": 88,
+              "operation_name": "deepscan",
+              "total_duration": 142499,
+              "average_duration": 1619
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/Crawler/HTTPS_insecure_maxTLS.js",
+              "total_duration": 36
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/Crawler/12-Crawler_User_Credentials_Plain_Text.js",
+              "total_duration": 25
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/httpdata/javascript_library_audit_external.js",
+              "total_duration": 76
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/Crawler/12-Crawler_HTTPS_weak_key_length.js",
+              "total_duration": 23
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/httpdata/acusensor.js",
+              "total_duration": 57
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/httpdata/jira_servicedesk_misconfiguration.js",
+              "total_duration": 55
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/httpdata/Java_JSON_Deserialization.js",
+              "total_duration": 65
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/httpdata/JWT_Header_Audit.js",
+              "total_duration": 123,
+              "average_duration": 1
+            },
+            {
+              "number_of_runs": 88,
+              "operation_name": "/httpdata/joomla_debug_console.js",
+              "total_duration": 34
+            }
+          ],
+          "locationStatsByRequest": [
+            {
+              "location_name": "https://petstore.swagger.io/",
+              "total_duration": 1658228,
+              "average_duration": 530,
+              "number_of_requests": 3127
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/user/createWithList",
+              "total_duration": 504480,
+              "average_duration": 302,
+              "number_of_requests": 1669
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/pet",
+              "total_duration": 2651619,
+              "average_duration": 316,
+              "number_of_requests": 8380
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/user/createWithArray",
+              "total_duration": 533201,
+              "average_duration": 318,
+              "number_of_requests": 1675
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/store/order",
+              "total_duration": 410603,
+              "average_duration": 306,
+              "number_of_requests": 1338
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/user",
+              "total_duration": 585843,
+              "average_duration": 350,
+              "number_of_requests": 1671
+            },
+            {
+              "location_name": "https://petstore.swagger.io/oauth/authorize",
+              "total_duration": 551230,
+              "average_duration": 327,
+              "number_of_requests": 1682
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/store/order/",
+              "total_duration": 334528,
+              "average_duration": 405,
+              "number_of_requests": 824
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/pet/",
+              "total_duration": 567809,
+              "average_duration": 355,
+              "number_of_requests": 1596
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/user/",
+              "total_duration": 838853,
+              "average_duration": 321,
+              "number_of_requests": 2609
+            }
+          ],
+          "locationStatsByAvgDuration": [
+            {
+              "location_name": "https://petstore.swagger.io/",
+              "total_duration": 1658228,
+              "average_duration": 530,
+              "number_of_requests": 3127
+            },
+            {
+              "location_name": "https://petstore.swagger.io/swagger-ui-bundle.js",
+              "total_duration": 137818,
+              "average_duration": 7656,
+              "number_of_requests": 18
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/store/",
+              "total_duration": 195568,
+              "average_duration": 455,
+              "number_of_requests": 429
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/swagger.json",
+              "total_duration": 206397,
+              "average_duration": 987,
+              "number_of_requests": 209
+            },
+            {
+              "location_name": "https://petstore.swagger.io/oauth2-redirect.js",
+              "total_duration": 15414,
+              "average_duration": 811,
+              "number_of_requests": 19
+            },
+            {
+              "location_name": "https://petstore.swagger.io/index.html",
+              "total_duration": 86022,
+              "average_duration": 398,
+              "number_of_requests": 216
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/store/order/",
+              "total_duration": 334528,
+              "average_duration": 405,
+              "number_of_requests": 824
+            },
+            {
+              "location_name": "https://petstore.swagger.io/swagger-ui.css",
+              "total_duration": 6968,
+              "average_duration": 536,
+              "number_of_requests": 13
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/swagger.yaml",
+              "total_duration": 206986,
+              "average_duration": 1034,
+              "number_of_requests": 200
+            },
+            {
+              "location_name": "https://petstore.swagger.io/swagger-ui-standalone-preset.js",
+              "total_duration": 35229,
+              "average_duration": 1957,
+              "number_of_requests": 18
+            }
+          ],
+          "locationStatsByTotalDuration": [
+            {
+              "location_name": "https://petstore.swagger.io/",
+              "total_duration": 1658228,
+              "average_duration": 530,
+              "number_of_requests": 3127
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/store/order/",
+              "total_duration": 334528,
+              "average_duration": 405,
+              "number_of_requests": 824
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/pet",
+              "total_duration": 2651619,
+              "average_duration": 316,
+              "number_of_requests": 8380
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/user/createWithList",
+              "total_duration": 504480,
+              "average_duration": 302,
+              "number_of_requests": 1669
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/store/order",
+              "total_duration": 410603,
+              "average_duration": 306,
+              "number_of_requests": 1338
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/user/createWithArray",
+              "total_duration": 533201,
+              "average_duration": 318,
+              "number_of_requests": 1675
+            },
+            {
+              "location_name": "https://petstore.swagger.io/oauth/authorize",
+              "total_duration": 551230,
+              "average_duration": 327,
+              "number_of_requests": 1682
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/user",
+              "total_duration": 585843,
+              "average_duration": 350,
+              "number_of_requests": 1671
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/pet/",
+              "total_duration": 567809,
+              "average_duration": 355,
+              "number_of_requests": 1596
+            },
+            {
+              "location_name": "https://petstore.swagger.io/v2/user/",
+              "total_duration": 838853,
+              "average_duration": 321,
+              "number_of_requests": 2609
+            }
+          ],
+          "operationStatsByTotalDuration": [
+            {
+              "number_of_runs": 1,
+              "operation_name": "/target/citrix_gateway_idp_xss.js",
+              "total_duration": 4294966326,
+              "average_duration": 4294966326
+            },
+            {
+              "number_of_runs": 64,
+              "operation_name": "/Scripts/PerScheme/Code_Execution.script",
+              "total_duration": 1907683,
+              "average_duration": 29807
+            },
+            {
+              "number_of_runs": 1,
+              "operation_name": "/Scripts/PerServer/JBoss_Status_Servlet_Information_Leak.script",
+              "total_duration": 4294966444,
+              "average_duration": 4294966444
+            },
+            {
+              "number_of_runs": 64,
+              "operation_name": "/Scripts/PerScheme/PHP_Code_Injection.script",
+              "total_duration": 959496,
+              "average_duration": 14992
+            },
+            {
+              "number_of_runs": 19,
+              "operation_name": "/Scripts/PostCrawl/SharePoint_Audit.script",
+              "total_duration": 4294965926,
+              "average_duration": 226050838
+            },
+            {
+              "number_of_runs": 19,
+              "operation_name": "/Scripts/PostCrawl/Server_Directory_Traversal.script",
+              "total_duration": 1063441,
+              "average_duration": 55970
+            },
+            {
+              "number_of_runs": 64,
+              "operation_name": "/Scripts/PerScheme/Sql_Injection.script",
+              "total_duration": 28277800,
+              "average_duration": 441840
+            },
+            {
+              "number_of_runs": 1,
+              "operation_name": "/target/cisco_ise_stored_xss.js",
+              "total_duration": 4294966395,
+              "average_duration": 4294966395
+            },
+            {
+              "number_of_runs": 1,
+              "operation_name": "/target/citrix_netscaler_CVE-2019-19781.js",
+              "total_duration": 4294966339,
+              "average_duration": 4294966339
+            },
+            {
+              "number_of_runs": 1,
+              "operation_name": "/target/Cisco_RV_auth_bypass_CVE-2021-1472.js",
+              "total_duration": 4294966385,
+              "average_duration": 4294966385
+            }
+          ]
+        }
+      },
+      "hosts": {
+        "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0": {
+          "host": "petstore.swagger.io",
+          "aborted": null,
+          "target_info": {
+            "os": "Unknown",
+            "server": "nginx",
+            "responsive": true
+          },
+          "aborted_reason": null,
+          "external_hosts": [
+            "https://www.googletagmanager.com",
+            "https://validator.swagger.io",
+            "http://swagger.io",
+            "http://www.apache.org",
+            "https://swagger.io",
+            "http://petstore.swagger.io"
+          ],
+          "web_scan_status": {
+            "locations": 29,
+            "request_count": 29130,
+            "avg_response_time": 55,
+            "max_response_time": 32180
+          },
+          "is_starting_host": true
+        }
+      },
+      "status": "completed",
+      "abort_requested": false,
+      "start_date": "2026-11-19T02:23:59.901657+00:00",
+      "end_date": "2026-11-19T02:53:31.942297+00:00",
+      "end_deadline": "2026-11-21T03:23:59.899832+00:00",
+      "event_level": 1,
+      "build": "24.4.240514098"
+    }
+  },
+  "status": "completed",
+  "severity_counts": {
+    "crit": 0,
+    "high": 1,
+    "medium": 2,
+    "low": 2,
+    "info": 3
+  }
+}

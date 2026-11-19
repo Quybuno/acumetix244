@@ -1,0 +1,44 @@
+{
+  "config_id": null,
+  "criticality": 10,
+  "current_session": {
+    "event_level": 1,
+    "progress": 100,
+    "scan_session_id": "b67019c3-e237-49b5-82c7-4f601549a879",
+    "severity_counts": {
+      "critical": 3,
+      "high": 14,
+      "info": 9,
+      "low": 3,
+      "medium": 5
+    },
+    "start_date": "2026-11-18T15:35:10.069086+00:00",
+    "status": "completed",
+    "threat": 4
+  },
+  "incremental": false,
+  "manual_intervention": false,
+  "max_scan_time": 0,
+  "next_run": null,
+  "profile_id": "11111111-1111-1111-1111-111111111111",
+  "profile_name": "Full Scan",
+  "report_template_id": "11111111-1111-1111-1111-111111111126",
+  "scan_config_name": null,
+  "scan_config_type": null,
+  "scan_id": "7100dd13-8e31-432d-9c2c-6673f062cc89",
+  "schedule": {
+    "disable": false,
+    "history_limit": null,
+    "recurrence": null,
+    "start_date": null,
+    "time_sensitive": false,
+    "triggerable": false
+  },
+  "target": {
+    "address": "https://demo.testfire.net/",
+    "criticality": 10,
+    "description": "test",
+    "type": "default"
+  },
+  "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+}

@@ -1,0 +1,75 @@
+{
+  "scanning_app": {
+    "wvs": {
+      "main": {
+        "vulns": [],
+        "status": "finished",
+        "duration": 9,
+        "messages": [
+          {
+            "data": "",
+            "kind": "finished",
+            "time": "2026-11-19T01:26:33.241144+00:00",
+            "level": -1,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "8b442f98-c907-4039-8951-69c5c0fa961b"
+            }
+          },
+          {
+            "data": "",
+            "kind": "scanning",
+            "time": "2026-11-19T01:26:32.029197+00:00",
+            "level": -1,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "8b442f98-c907-4039-8951-69c5c0fa961b"
+            }
+          },
+          {
+            "data": "Could not connect to (http://demo.testfire.net/)",
+            "kind": "preflight_notification",
+            "time": "2026-11-19T01:26:31.973141+00:00",
+            "level": 2,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "8b442f98-c907-4039-8951-69c5c0fa961b"
+            }
+          }
+        ],
+        "progress": 100,
+        "web_scan_status": {
+          "locations": 2
+        },
+        "status_statistics": {}
+      },
+      "hosts": {
+        "8b442f98-c907-4039-8951-69c5c0fa961b": {
+          "host": "demo.testfire.net",
+          "aborted": true,
+          "target_info": {},
+          "aborted_reason": "Could not connect to (http://demo.testfire.net/)",
+          "web_scan_status": {
+            "locations": 2
+          },
+          "is_starting_host": true
+        }
+      },
+      "status": "completed",
+      "abort_requested": false,
+      "start_date": "2026-11-19T01:26:13.312757+00:00",
+      "end_date": "2026-11-19T01:26:35.079534+00:00",
+      "end_deadline": "2026-11-21T02:26:13.309041+00:00",
+      "event_level": 2,
+      "build": "24.4.240514098"
+    }
+  },
+  "status": "completed",
+  "severity_counts": {
+    "crit": null,
+    "high": null,
+    "medium": null,
+    "low": null,
+    "info": null
+  }
+}

@@ -10,6 +10,7 @@
 | T0.4 | Hoàn thành | 2026-11-19 | Lấy thông tin xác thực API bằng lệnh (API key & Session token). Ghi rõ đặc tả header gửi trong HTTP request. | Không |
 | T0.5 | Hoàn thành | 2026-11-19 | Trích xuất toàn bộ đặc tả OpenAPI chính thức từ bản dựng Acunetix, thu thập chính xác tên trường các API quét, cấu hình và báo cáo. | Không |
 | T0.6 | Hoàn thành | 2026-11-19 | Lập tài liệu đặc tả chuỗi gọi API và kiểm chứng bằng script tự động hóa chuỗi đầy đủ: Target -> Config -> Scan -> Poll -> Abort -> Delete. | Không |
+| T0.7 | Hoàn thành | 2026-11-19 | Trích xuất JSON mẫu thực tế (34 lỗ hổng web, 8 lỗ hổng API, crawl statistics). Xác nhận KHÔNG CẦN chọn mẫu báo cáo khi lấy qua API. | Không |
 
 ## Chi tiết từng task
 
@@ -71,3 +72,22 @@
   - Viết script Python `scripts/verify_api_sequence.py` thực thi chuỗi đầy đủ: Healthcheck -> Create Target -> Patch Config -> Trigger Scan -> Poll Status -> Abort -> Delete Target.
 - **Kết quả & Bằng chứng**:
   - Script chạy thành công từ đầu đến cuối (`test_standalone` trả về 200, 201, 204 tương ứng ở từng bước).
+
+### T0.7: Lấy kết quả qua API và lưu dữ liệu thử cho ReportParser
+- **Đã làm**:
+  - Trích xuất dữ liệu kết quả từ các lượt quét thực tế trên máy:
+    - Quét Web App (`demo.testfire.net`): 34 lỗ hổng (gồm SQL Injection, XSS...).
+    - Quét API (`petstore.swagger.io`): 8 lỗ hổng.
+    - Chi tiết lỗ hổng mức nghiêm trọng cao (Critical detail với HTTP Request / Response).
+    - Dữ liệu thống kê crawl và độ phủ (`statistics`).
+  - Lưu toàn bộ JSON mẫu vào thư mục `docs/samples/`.
+  - Xác minh yêu cầu template: **KHÔNG PHẢI CHỌN MẪU BÁO CÁO**. API lấy trực tiếp danh sách lỗi và thống kê dạng JSON thô. Template chỉ dùng khi xuất PDF/HTML qua `/api/v1/reports`.
+- **Kết quả & Bằng chứng**:
+  - Đã tạo các tệp mẫu:
+    - `docs/samples/sample_webapp_scan_info.json`
+    - `docs/samples/sample_webapp_vulnerabilities.json`
+    - `docs/samples/sample_webapp_statistics.json`
+    - `docs/samples/sample_vulnerability_detail_critical.json`
+    - `docs/samples/sample_api_scan_info.json`
+    - `docs/samples/sample_api_vulnerabilities.json`
+    - `docs/samples/sample_api_statistics.json`

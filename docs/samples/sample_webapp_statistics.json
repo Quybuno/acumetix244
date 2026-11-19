@@ -1,0 +1,472 @@
+{
+  "scanning_app": {
+    "wvs": {
+      "main": {
+        "vulns": [
+          {
+            "name": "SQL Injection",
+            "time": "2026-11-18T15:53:00.273498+00:00",
+            "vt_id": "db04b846-7dec-fb62-f12d-1a152945cdae",
+            "vuln_id": "4033218858427876460",
+            "severity": 4,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          },
+          {
+            "name": "Stack Trace Disclosure (Tomcat)",
+            "time": "2026-11-18T15:50:14.075318+00:00",
+            "vt_id": "c3c60530-0377-52bb-68f6-602ae81c3916",
+            "vuln_id": "4033217464249615465",
+            "severity": 1,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          },
+          {
+            "name": "Cross-site Scripting (DOM based)",
+            "time": "2026-11-18T15:48:52.957998+00:00",
+            "vt_id": "2ab78c0c-18e7-2258-c305-27ea3f287314",
+            "vuln_id": "4033216783732180070",
+            "severity": 3,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          },
+          {
+            "name": "Cross-site Scripting",
+            "time": "2026-11-18T15:48:52.886371+00:00",
+            "vt_id": "7a2fa5a4-7125-1062-0651-ed5219f05809",
+            "vuln_id": "4033216783170143331",
+            "severity": 3,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          },
+          {
+            "name": "Programming Error Messages",
+            "time": "2026-11-18T15:47:21.042007+00:00",
+            "vt_id": "760d5a01-dc58-fcbe-6c21-4f04c64a2467",
+            "vuln_id": "4033216012743607392",
+            "severity": 1,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          }
+        ],
+        "status": "finished",
+        "duration": 1989,
+        "messages": [
+          {
+            "data": "",
+            "kind": "finished",
+            "time": "2026-11-18T16:08:29.610319+00:00",
+            "level": -1,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          },
+          {
+            "data": "Login forms were detected but no LSR or Autologin are configured.",
+            "kind": "form_detected_noLsr_noAl",
+            "time": "2026-11-18T15:36:00.249924+00:00",
+            "level": 1,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          },
+          {
+            "data": "",
+            "kind": "antivirus_not_found",
+            "time": "2026-11-18T15:35:18.405116+00:00",
+            "level": 1,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          },
+          {
+            "data": "",
+            "kind": "scanning",
+            "time": "2026-11-18T15:35:18.209647+00:00",
+            "level": -1,
+            "target_info": {
+              "host": "demo.testfire.net",
+              "target_id": "0164e3b5-e498-450a-ac95-813eed5db73d"
+            }
+          }
+        ],
+        "progress": 100,
+        "web_scan_status": {
+          "locations": 70,
+          "request_count": 40121,
+          "avg_response_time": 2,
+          "max_response_time": 32740
+        },
+        "status_statistics": {
+          "operationStatsByRun": [
+            {
+              "number_of_runs": 245,
+              "operation_name": "deepscan",
+              "total_duration": 513662,
+              "average_duration": 2096
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/httpdata/acusensor.js",
+              "total_duration": 174
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/Crawler/12-Crawler_User_Credentials_Plain_Text.js",
+              "total_duration": 1179,
+              "average_duration": 4
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/httpdata/javascript_library_audit_external.js",
+              "total_duration": 432,
+              "average_duration": 1
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/Crawler/12-Crawler_HTTPS_weak_key_length.js",
+              "total_duration": 103
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/httpdata/joomla_debug_console.js",
+              "total_duration": 140
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/httpdata/JWT_Header_Audit.js",
+              "total_duration": 346,
+              "average_duration": 1
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/Crawler/HTTPS_insecure_maxTLS.js",
+              "total_duration": 169
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/httpdata/jira_servicedesk_misconfiguration.js",
+              "total_duration": 113
+            },
+            {
+              "number_of_runs": 245,
+              "operation_name": "/httpdata/Java_JSON_Deserialization.js",
+              "total_duration": 184
+            }
+          ],
+          "locationStatsByRequest": [
+            {
+              "location_name": "https://demo.testfire.net/",
+              "total_duration": 2803288,
+              "average_duration": 531,
+              "number_of_requests": 5274
+            },
+            {
+              "location_name": "https://demo.testfire.net/doLogin",
+              "total_duration": 476334,
+              "average_duration": 397,
+              "number_of_requests": 1198
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/account/",
+              "total_duration": 1576986,
+              "average_duration": 613,
+              "number_of_requests": 2571
+            },
+            {
+              "location_name": "https://demo.testfire.net/bank/doTransfer",
+              "total_duration": 1383300,
+              "average_duration": 477,
+              "number_of_requests": 2896
+            },
+            {
+              "location_name": "https://demo.testfire.net/bank/showTransactions",
+              "total_duration": 378506,
+              "average_duration": 467,
+              "number_of_requests": 810
+            },
+            {
+              "location_name": "https://demo.testfire.net/bank/customize.jsp",
+              "total_duration": 407034,
+              "average_duration": 312,
+              "number_of_requests": 1302
+            },
+            {
+              "location_name": "https://demo.testfire.net/sendFeedback",
+              "total_duration": 443593,
+              "average_duration": 414,
+              "number_of_requests": 1070
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/feedback/submit",
+              "total_duration": 551122,
+              "average_duration": 463,
+              "number_of_requests": 1190
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/login",
+              "total_duration": 501604,
+              "average_duration": 545,
+              "number_of_requests": 919
+            },
+            {
+              "location_name": "https://demo.testfire.net/admin/admin.jsp",
+              "total_duration": 1621487,
+              "average_duration": 517,
+              "number_of_requests": 3132
+            }
+          ],
+          "locationStatsByAvgDuration": [
+            {
+              "location_name": "https://demo.testfire.net/api/account/",
+              "total_duration": 1576986,
+              "average_duration": 613,
+              "number_of_requests": 2571
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/feedback/",
+              "total_duration": 207005,
+              "average_duration": 552,
+              "number_of_requests": 375
+            },
+            {
+              "location_name": "https://demo.testfire.net/admin/admin.jsp",
+              "total_duration": 1621487,
+              "average_duration": 517,
+              "number_of_requests": 3132
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/admin/",
+              "total_duration": 213026,
+              "average_duration": 525,
+              "number_of_requests": 405
+            },
+            {
+              "location_name": "https://demo.testfire.net/util/swfobject.js",
+              "total_duration": 19660,
+              "average_duration": 1228,
+              "number_of_requests": 16
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/login",
+              "total_duration": 501604,
+              "average_duration": 545,
+              "number_of_requests": 919
+            },
+            {
+              "location_name": "https://demo.testfire.net/bank/util/vulnerable.swf",
+              "total_duration": 7466,
+              "average_duration": 746,
+              "number_of_requests": 10
+            },
+            {
+              "location_name": "https://demo.testfire.net/bank/doTransfer",
+              "total_duration": 1383300,
+              "average_duration": 477,
+              "number_of_requests": 2896
+            },
+            {
+              "location_name": "https://demo.testfire.net/util/expressInstall.swf",
+              "total_duration": 17871,
+              "average_duration": 714,
+              "number_of_requests": 25
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/logout",
+              "total_duration": 113262,
+              "average_duration": 494,
+              "number_of_requests": 229
+            }
+          ],
+          "locationStatsByTotalDuration": [
+            {
+              "location_name": "https://demo.testfire.net/",
+              "total_duration": 2803288,
+              "average_duration": 531,
+              "number_of_requests": 5274
+            },
+            {
+              "location_name": "https://demo.testfire.net/bank/doTransfer",
+              "total_duration": 1383300,
+              "average_duration": 477,
+              "number_of_requests": 2896
+            },
+            {
+              "location_name": "https://demo.testfire.net/doLogin",
+              "total_duration": 476334,
+              "average_duration": 397,
+              "number_of_requests": 1198
+            },
+            {
+              "location_name": "https://demo.testfire.net/admin/admin.jsp",
+              "total_duration": 1621487,
+              "average_duration": 517,
+              "number_of_requests": 3132
+            },
+            {
+              "location_name": "https://demo.testfire.net/sendFeedback",
+              "total_duration": 443593,
+              "average_duration": 414,
+              "number_of_requests": 1070
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/admin/addUser",
+              "total_duration": 407291,
+              "average_duration": 569,
+              "number_of_requests": 715
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/account/",
+              "total_duration": 1576986,
+              "average_duration": 613,
+              "number_of_requests": 2571
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/feedback/submit",
+              "total_duration": 551122,
+              "average_duration": 463,
+              "number_of_requests": 1190
+            },
+            {
+              "location_name": "https://demo.testfire.net/api/login",
+              "total_duration": 501604,
+              "average_duration": 545,
+              "number_of_requests": 919
+            },
+            {
+              "location_name": "https://demo.testfire.net/bank/customize.jsp",
+              "total_duration": 407034,
+              "average_duration": 312,
+              "number_of_requests": 1302
+            }
+          ],
+          "operationStatsByTotalDuration": [
+            {
+              "number_of_runs": 7,
+              "operation_name": "/Scripts/PerFolder/Dreamweaver_Scripts.script",
+              "total_duration": 4294966163,
+              "average_duration": 613566594
+            },
+            {
+              "number_of_runs": 62,
+              "operation_name": "/Scripts/PostCrawl/Server_Directory_Traversal.script",
+              "total_duration": 1197980,
+              "average_duration": 19322
+            },
+            {
+              "number_of_runs": 135,
+              "operation_name": "/Scripts/PerScheme/PHP_Code_Injection.script",
+              "total_duration": 986557,
+              "average_duration": 7307
+            },
+            {
+              "number_of_runs": 7,
+              "operation_name": "/Scripts/PerFolder/Mercurial_Repository.script",
+              "total_duration": 4294965956,
+              "average_duration": 613566565
+            },
+            {
+              "number_of_runs": 135,
+              "operation_name": "/Scripts/PerScheme/Code_Execution.script",
+              "total_duration": 2143283,
+              "average_duration": 15876
+            },
+            {
+              "number_of_runs": 62,
+              "operation_name": "/Scripts/PostCrawl/Server_Directory_Listing.script",
+              "total_duration": 4294965953,
+              "average_duration": 69273644
+            },
+            {
+              "number_of_runs": 135,
+              "operation_name": "/Scripts/PerScheme/Sql_Injection.script",
+              "total_duration": 39692597,
+              "average_duration": 294019
+            },
+            {
+              "number_of_runs": 135,
+              "operation_name": "/Scripts/PerScheme/File_Inclusion.script",
+              "total_duration": 714114,
+              "average_duration": 5289
+            },
+            {
+              "number_of_runs": 135,
+              "operation_name": "/Scripts/PerScheme/MongoDB_Injection.script",
+              "total_duration": 847391,
+              "average_duration": 6276
+            },
+            {
+              "number_of_runs": 7,
+              "operation_name": "/Scripts/PerFolder/JetBrains_Idea_Project_Directory.script",
+              "total_duration": 4294965959,
+              "average_duration": 613566565
+            }
+          ]
+        }
+      },
+      "hosts": {
+        "0164e3b5-e498-450a-ac95-813eed5db73d": {
+          "host": "demo.testfire.net",
+          "aborted": null,
+          "target_info": {
+            "os": "Unknown",
+            "server": "Apache-Coyote/1.1",
+            "responsive": true,
+            "technologies": [
+              "Java/J2EE",
+              "Java/J2EE"
+            ]
+          },
+          "aborted_reason": null,
+          "external_hosts": [
+            "https://github.com",
+            "https://www.hcl-software.com",
+            "https://online.swagger.io",
+            "https://validator.swagger.io",
+            "http://www.netscape.com",
+            "http://demo-analytics.testfire.net",
+            "http://www.watchfire.com",
+            "http://www.newspapersyndications.tv",
+            "http://www.adobe.com",
+            "http://www.cert.org"
+          ],
+          "web_scan_status": {
+            "locations": 70,
+            "request_count": 40121,
+            "avg_response_time": 2,
+            "max_response_time": 32740
+          },
+          "is_starting_host": true
+        }
+      },
+      "status": "completed",
+      "abort_requested": false,
+      "start_date": "2026-11-18T15:35:10.069086+00:00",
+      "end_date": "2026-11-18T16:08:38.717535+00:00",
+      "end_deadline": "2026-11-20T16:35:10.066584+00:00",
+      "event_level": 1,
+      "build": "24.4.240514098"
+    }
+  },
+  "status": "completed",
+  "severity_counts": {
+    "crit": 3,
+    "high": 14,
+    "medium": 5,
+    "low": 3,
+    "info": 9
+  }
+}

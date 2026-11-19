@@ -1,0 +1,197 @@
+{
+  "vulnerabilities": [
+    {
+      "affects_detail": "",
+      "affects_url": "https://petstore.swagger.io/",
+      "app": "wvs",
+      "confidence": 100,
+      "criticality": 10,
+      "last_seen": null,
+      "loc_id": 2,
+      "severity": 3,
+      "status": "open",
+      "tags": [
+        "configuration",
+        "CWE-326",
+        "weak_crypto",
+        "confidence.100"
+      ],
+      "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0",
+      "target_vuln_id": "4033537205002568891",
+      "vt_created": null,
+      "vt_id": "63fa48a4-bd02-b3eb-1219-3d1f1f8a5143",
+      "vt_name": "Insecure Transportation Security Protocol Supported (TLS 1.0)",
+      "vt_updated": null,
+      "vuln_id": "4033537204901905594"
+    },
+    {
+      "affects_detail": "",
+      "affects_url": "https://petstore.swagger.io/",
+      "app": "wvs",
+      "confidence": 95,
+      "criticality": 10,
+      "last_seen": null,
+      "loc_id": 2,
+      "severity": 2,
+      "status": "open",
+      "tags": [
+        "configuration",
+        "CWE-16"
+      ],
+      "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0",
+      "target_vuln_id": "4033538769209525444",
+      "vt_created": null,
+      "vt_id": "34a6c791-c497-27d5-7272-6a968e9fdccb",
+      "vt_name": "HTTP Strict Transport Security (HSTS) Policy Not Enabled",
+      "vt_updated": null,
+      "vuln_id": "4033538769175971011"
+    },
+    {
+      "affects_detail": "",
+      "affects_url": "https://petstore.swagger.io/",
+      "app": "wvs",
+      "confidence": 100,
+      "criticality": 10,
+      "last_seen": null,
+      "loc_id": 2,
+      "severity": 2,
+      "status": "open",
+      "tags": [
+        "configuration",
+        "CWE-326",
+        "weak_crypto",
+        "confidence.100"
+      ],
+      "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0",
+      "target_vuln_id": "4033537205556217022",
+      "vt_created": null,
+      "vt_id": "a46414c9-2736-276e-6c22-de750b15ad1f",
+      "vt_name": "Insecure Transportation Security Protocol Supported (TLS 1.1)",
+      "vt_updated": null,
+      "vuln_id": "4033537205514273981"
+    },
+    {
+      "affects_detail": "",
+      "affects_url": "https://petstore.swagger.io/",
+      "app": "wvs",
+      "confidence": 100,
+      "criticality": 10,
+      "last_seen": null,
+      "loc_id": 2,
+      "severity": 1,
+      "status": "open",
+      "tags": [
+        "CWE-829",
+        "xfs",
+        "verified",
+        "confidence.100"
+      ],
+      "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0",
+      "target_vuln_id": "4033538769738007751",
+      "vt_created": null,
+      "vt_id": "058e75e4-4f79-59f0-895d-d351c49ed3ea",
+      "vt_name": "Insecure Frame (External)",
+      "vt_updated": null,
+      "vuln_id": "4033538769696064710"
+    },
+    {
+      "affects_detail": "",
+      "affects_url": "https://petstore.swagger.io/",
+      "app": "wvs",
+      "confidence": 95,
+      "criticality": 10,
+      "last_seen": null,
+      "loc_id": 2,
+      "severity": 1,
+      "status": "open",
+      "tags": [
+        "configuration",
+        "information_disclosure",
+        "CWE-200"
+      ],
+      "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0",
+      "target_vuln_id": "4033538775643587789",
+      "vt_created": null,
+      "vt_id": "e52da8c8-7780-f429-f326-3184bdc42ebb",
+      "vt_name": "Sensitive pages could be cached",
+      "vt_updated": null,
+      "vuln_id": "4033538775618421964"
+    },
+    {
+      "affects_detail": "",
+      "affects_url": "https://petstore.swagger.io/",
+      "app": "wvs",
+      "confidence": 95,
+      "criticality": 10,
+      "last_seen": null,
+      "loc_id": 2,
+      "severity": 0,
+      "status": "open",
+      "tags": [
+        "configuration",
+        "CWE-284"
+      ],
+      "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0",
+      "target_vuln_id": "4033537046139110584",
+      "vt_created": null,
+      "vt_id": "5e3780f2-8705-a863-bf92-ead6736d98bc",
+      "vt_name": "Access-Control-Allow-Origin header with wildcard (*) value",
+      "vt_updated": null,
+      "vuln_id": "4033537046088778935"
+    },
+    {
+      "affects_detail": "",
+      "affects_url": "https://petstore.swagger.io/",
+      "app": "wvs",
+      "confidence": 100,
+      "criticality": 10,
+      "last_seen": null,
+      "loc_id": 2,
+      "severity": 0,
+      "status": "open",
+      "tags": [
+        "configuration",
+        "CWE-16",
+        "verified",
+        "confidence.100"
+      ],
+      "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0",
+      "target_vuln_id": "4033538619061830849",
+      "vt_created": null,
+      "vt_id": "c24affbc-feb9-49c7-841c-5427ba38a10d",
+      "vt_name": "Missing object-src in CSP Declaration",
+      "vt_updated": null,
+      "vuln_id": "4033538619028276416"
+    },
+    {
+      "affects_detail": "",
+      "affects_url": "https://petstore.swagger.io/",
+      "app": "wvs",
+      "confidence": 95,
+      "criticality": 10,
+      "last_seen": null,
+      "loc_id": 2,
+      "severity": 0,
+      "status": "open",
+      "tags": [
+        "configuration",
+        "CWE-1021"
+      ],
+      "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0",
+      "target_vuln_id": "4033538770551702730",
+      "vt_created": null,
+      "vt_id": "bd2ff718-596b-a1cd-3b08-6e61d4b3d8da",
+      "vt_name": "Permissions-Policy header not implemented",
+      "vt_updated": null,
+      "vuln_id": "4033538770518148297"
+    }
+  ],
+  "pagination": {
+    "count": 8,
+    "cursor_hash": "8f629dd49f910b9202eb0da5d51fdb6e",
+    "cursors": [
+      null
+    ],
+    "sort": null
+  }
+}

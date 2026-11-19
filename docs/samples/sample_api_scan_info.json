@@ -1,0 +1,44 @@
+{
+  "config_id": null,
+  "criticality": 10,
+  "current_session": {
+    "event_level": 1,
+    "progress": 100,
+    "scan_session_id": "42d6455a-09f6-4226-ac6f-36a480c7f230",
+    "severity_counts": {
+      "critical": 0,
+      "high": 1,
+      "info": 3,
+      "low": 2,
+      "medium": 2
+    },
+    "start_date": "2026-11-19T02:23:59.901657+00:00",
+    "status": "completed",
+    "threat": 3
+  },
+  "incremental": false,
+  "manual_intervention": false,
+  "max_scan_time": 0,
+  "next_run": null,
+  "profile_id": "11111111-1111-1111-1111-111111111111",
+  "profile_name": "Full Scan",
+  "report_template_id": null,
+  "scan_config_name": null,
+  "scan_config_type": null,
+  "scan_id": "4ae7b222-96eb-4648-aadd-630dce755225",
+  "schedule": {
+    "disable": false,
+    "history_limit": null,
+    "recurrence": null,
+    "start_date": null,
+    "time_sensitive": false,
+    "triggerable": false
+  },
+  "target": {
+    "address": "https://petstore.swagger.io/",
+    "criticality": 10,
+    "description": "pet",
+    "type": "default"
+  },
+  "target_id": "b888dcdb-2d7b-4bf6-b8ee-7f90c08b3db0"
+}
