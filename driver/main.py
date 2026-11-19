@@ -199,6 +199,38 @@ def main():
                     f"({health_details.get('locations')} locations discovered) and valid authentication."
                 )
 
+            # 10. Fetch All Vulnerabilities (with pagination) & Statistics (Task T2.8)
+            vulnerabilities = []
+            if scan_session_id:
+                vulnerabilities = client.get_scan_vulnerabilities(
+                    scan_id=scan_id,
+                    scan_session_id=scan_session_id,
+                    page_size=100
+                )
+                logger.info(
+                    f"Successfully collected {len(vulnerabilities)} vulnerabilities and scan statistics "
+                    f"for scan {scan_id}."
+                )
+
+            severity_counts = (scan_info.get("current_session") or {}).get("severity_counts") or {}
+            scan_result_payload = {
+                "scan_id": config.scan_id,
+                "acunetix_scan_id": scan_id,
+                "session_id": scan_session_id,
+                "status": "COMPLETED" if is_healthy else "FAILED",
+                "error_code": error_code,
+                "is_healthy": is_healthy,
+                "health_details": health_details,
+                "severity_counts": severity_counts,
+                "vulnerabilities_count": len(vulnerabilities),
+                "vulnerabilities": vulnerabilities,
+                "statistics": statistics
+            }
+            logger.info(
+                f"Scan payload compiled: status='{scan_result_payload['status']}' "
+                f"vulns={len(vulnerabilities)} locations={health_details.get('locations')}."
+            )
+
         except Exception as e:
             logger.error(f"FATAL: Scan execution failed: {e}")
             if target_id and args.clean_target:

@@ -427,3 +427,16 @@
     - **Test Case 3 (MANUAL_INTERVENTION)**: Kiểm định cờ `manual_intervention=True`, hàm kiểm tra trả về `is_healthy=False`, `error_code='MANUAL_INTERVENTION'`.
     - **Test Case 4 (HEALTHY SCAN)**: Lượt quét có số locations hợp lệ, không có lỗi đăng nhập hay can thiệp người dùng, hàm kiểm tra trả về `is_healthy=True`.
     - Không phát hiện bất kỳ rò rỉ bí mật nào trong stdout/log.
+
+### T2.8: Lấy danh sách lỗ hổng qua API phân trang kèm số liệu thu thập
+- **Đã làm**:
+  - Mở rộng lớp `AcunetixClient` trong `driver/client.py`:
+    - `get_scan_vulnerabilities(scan_id, scan_session_id, page_size)`: duyệt qua toàn bộ các trang lỗ hổng bằng cơ chế con trỏ `?c=<cursor>&l=<limit>` dựa trên mảng `pagination.cursors` của Acunetix. Thu thập 100% bản ghi lỗ hổng mà không làm đứt đoạn hay bỏ sót dữ liệu.
+  - Cập nhật `driver/main.py`:
+    - Tích hợp Bước 10: Thu thập toàn bộ danh sách lỗ hổng và thống kê crawl, tổng hợp thành đối tượng kết quả chuẩn (`scan_result_payload`) gồm trạng thái tổng thể (`status`, `error_code`, `is_healthy`), số liệu phân rã theo mức nghiêm trọng (`severity_counts`), số đường dẫn crawl được (`locations`), và toàn bộ chi tiết danh sách lỗ hổng.
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t28_vulnerabilities_pagination.py`:
+    - **Test Live API**: Driver thực thi quét, hoàn tất polling, tự động gọi API phân trang thu thập kết quả và thống kê (`locations=2`). Đối soát trực tiếp với Acunetix REST API khớp 100%.
+    - **Test Thuật toán phân trang đa trang**: Giả lập dữ liệu lớn trải dài qua 3 trang con trỏ (`page_0`, `cur_page1`, `cur_page2`), thuật toán duyệt chuẩn xác qua từng con trỏ, thu thập đủ 5/5 lỗ hổng theo đúng thứ tự.
+    - Toàn bộ bản ghi lỗ hổng đều chứa đầy đủ các trường cốt lõi: `vuln_id`, `vt_name`, `severity`, `affects_url`, `status`.
+    - Không phát hiện bất kỳ mật khẩu hay token nào rò rỉ trong log/output.

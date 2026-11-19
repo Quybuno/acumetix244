@@ -563,6 +563,56 @@ class AcunetixClient:
             return {}
         return data
 
+    def get_scan_vulnerabilities(
+        self,
+        scan_id: str,
+        scan_session_id: str,
+        page_size: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch all vulnerabilities for a scan session with automatic pagination (Task T2.8).
+        GET /api/v1/scans/{scan_id}/results/{scan_session_id}/vulnerabilities?l={page_size}
+        """
+        all_vulns = []
+        visited_cursors = set()
+        next_cursor = None
+
+        while True:
+            endpoint = f"/api/v1/scans/{scan_id}/results/{scan_session_id}/vulnerabilities?l={page_size}"
+            if next_cursor:
+                endpoint += f"&c={next_cursor}"
+
+            status, data = self.request(endpoint)
+            if status != 200 or not isinstance(data, dict):
+                self.logger.warning(f"Error fetching vulnerabilities: HTTP {status}, resp: {data}")
+                break
+
+            vulns = data.get("vulnerabilities", [])
+            all_vulns.extend(vulns)
+
+            pagination = data.get("pagination", {})
+            total_count = pagination.get("count", len(all_vulns))
+            cursors = pagination.get("cursors", [])
+
+            self.logger.info(
+                f"Fetched {len(vulns)} vulnerabilities (cumulative: {len(all_vulns)}/{total_count})."
+            )
+
+            # Advance cursor
+            try:
+                curr_idx = cursors.index(next_cursor)
+                if curr_idx + 1 < len(cursors) and cursors[curr_idx + 1] is not None:
+                    next_cursor = cursors[curr_idx + 1]
+                    if next_cursor in visited_cursors:
+                        break
+                    visited_cursors.add(next_cursor)
+                else:
+                    break
+            except (ValueError, IndexError):
+                break
+
+        return all_vulns
+
     def check_post_scan_health(
         self,
         scan_id: str,
