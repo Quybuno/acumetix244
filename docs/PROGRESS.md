@@ -16,6 +16,7 @@
 | T0.10 | Hoàn thành | 2026-11-19 | Khởi động OWASP Juice Shop làm đích thử cục bộ trên port 3000 (có đăng nhập, API REST, đường dẫn đăng xuất /#/logout). | Không |
 | T0.11 | Hoàn thành | 2026-11-19 | Xóa và tạo lại instance liên tiếp: xác nhận dữ liệu sạch 100% (0 target, 0 scan) và license tự kích hoạt thành công đúng chuẩn pod giả dùng 1 lần. | Không |
 | T1.1 | Hoàn thành | 2026-11-19 | Thiết lập quy ước tên `scan-<mã>-<vai trò>`, nhãn `scan-id`, `role`, cấu trúc thư mục tạm riêng theo lượt. Kiểm chứng lọc Docker chính xác. | Không |
+| T1.2 | Hoàn thành | 2026-11-19 | Container giữ mạng (`alpine:3.20 sleep infinity` + `--add-host host.docker.internal:host-gateway`). Driver gọi localhost:3443 và webhook host thành công. | Không |
 
 ## Chi tiết từng task
 
@@ -148,3 +149,14 @@
   - Hàm `list_pod_containers(scan_id)` lọc toàn bộ các container của một lượt quét bằng filter `label=scan-id=<mã>`.
 - **Kết quả & Bằng chứng**:
   - Đã chạy thử nghiệm tạo 2 container gắn nhãn và xác minh hàm `list_pod_containers` nhận diện chính xác 100% qua lệnh `docker ps -a --filter label=scan-id=...`.
+
+### T1.2: Container giữ mạng và liên lạc nội bộ / webhook
+- **Đã làm**:
+  - Xây dựng và kiểm chứng kiến trúc mạng chia sẻ (shared network namespace):
+    1. Khởi động container giữ mạng `scan-<mã>-net` bằng `alpine:3.20 sleep infinity` với cờ `--add-host host.docker.internal:host-gateway`.
+    2. Container Acunetix chạy với `--network container:scan-<mã>-net`.
+    3. Container Driver chạy với `--network container:scan-<mã>-net`.
+  - Tạo mock HTTP webhook server chạy trên máy host (cổng 9999).
+- **Kết quả & Bằng chứng**:
+  - Từ container Driver gọi `https://localhost:3443/api/v1/info` tới Acunetix thành công qua giao diện loopback nội bộ.
+  - Từ container Driver gọi `http://host.docker.internal:9999/webhook` gửi payload webhook về máy host thành công (HTTP 200).
