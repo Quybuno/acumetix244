@@ -538,4 +538,34 @@
 - **Kết luận**:
   - Toàn bộ 12 task của Giai đoạn 2 (`T2.1` -> `T2.12`) và toàn bộ tiêu chí của **Cổng sang giai đoạn 3** đã được kiểm chứng chạy thật thành công xuất sắc.
 
+---
+
+## Giai đoạn 3: Backend
+
+### T3.1: Mô hình dữ liệu cho lượt quét, cấu hình có phiên bản và kết quả (Zero secrets in DB)
+- **Đã làm**:
+  - Thiết kế cấu trúc gói `backend/` gồm `db/` và `models/`.
+  - Tạo `backend/db/schema.py`:
+    - Bảng `scans`: `scan_id` (PK), `project_id`, `engine` (`acunetix`/`fortify`), `created_by`, `status` (`SCANNING`, `PARSING`, `COMPLETED`, `FAILED`), `error_code`, `target` (URL cho Acunetix, nhánh git cho Fortify), `token_hash` (chuỗi SHA-256 64 ký tự hex), `created_at`, `updated_at`, `completed_at`.
+    - Bảng `scan_options_configs`: `id`, `scan_id` (FK), `version` (phiên bản cấu hình, ví dụ `1.0`), `config_json` (chỉ lưu các trường cấu hình không nhạy cảm), `created_at`.
+    - Bảng `scan_results`: `id`, `scan_id` (FK), `status`, `vulnerabilities_count`, `severity_counts_json`, `vulnerabilities_json`, `statistics_json`, `timings_json`, `coverage_warnings_json`, `created_at`.
+    - Định nghĩa danh sách các từ khóa cấm xuất hiện trong tên cột: `FORBIDDEN_COLUMN_SUBSTRINGS` (`password`, `secret`, `raw_token`, `api_key`, `credential`, v.v.).
+  - Tạo `backend/db/database.py`:
+    - Quản lý kết nối SQLite, kích hoạt ngoại khóa (`PRAGMA foreign_keys = ON;`), khởi tạo schema.
+    - Phương thức kiểm tra toàn diện `verify_zero_secret_columns()` duyệt kiểm tra toàn bộ danh mục bảng và cột thực tế trong SQLite.
+  - Tạo `backend/models/scan.py`:
+    - Các dataclass `ScanJob`, `ScanOptionsConfig`, `ScanResult`.
+    - Hàm băm an toàn `hash_webhook_token()` và so sánh thời gian hằng số `verify_webhook_token()` sử dụng `hmac.compare_digest`.
+    - Lớp `ScanRepository` thực hiện các thao tác thêm, lấy, chuyển trạng thái và lưu kết quả an toàn.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t31_datamodels.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t31_datamodels.py` PASS 100% tất cả 6 test suites:
+    1. Kiểm tra cấu trúc bảng và xác nhận 100% **không có bất kỳ cột nào chứa secret** (`scans`, `scan_options_configs`, `scan_results`).
+    2. Băm token SHA-256: token thô được băm 64-char hex và xác thực chính xác; token thô tuyệt đối không được ghi vào DB.
+    3. Tạo lượt quét và máy trạng thái: chuyển giao trạng thái tuần tự `SCANNING` -> `PARSING` -> `COMPLETED`.
+    4. Cấu hình có phiên bản `1.0`: lưu và đọc cấu hình không nhạy cảm thành công; model tự động bắt lỗi và từ chối khi cố tình lưu `admin_password` vào cấu hình.
+    5. Lưu trữ kết quả: ghi nhận đầy đủ danh sách lỗ hổng, số lượng theo mức nghiêm trọng, thống kê crawl và bảng timings.
+    6. Trích xuất thô (dump) toàn bộ cơ sở dữ liệu: đối soát không có bất kỳ mật khẩu hay token nào xuất hiện trong các bản ghi SQLite.
+
+
 
