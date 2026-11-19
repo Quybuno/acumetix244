@@ -20,6 +20,7 @@ from driver.client import AcunetixClient
 EXIT_CODE_ACUNETIX_NOT_READY = 10
 EXIT_CODE_AUTH_FAILED = 11
 EXIT_CODE_CONFIG_FAILED = 12
+EXIT_CODE_IMPORT_FAILED = 13
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deep Review Acunetix Scanner Driver")
@@ -118,6 +119,20 @@ def main():
             except Exception:
                 pass
         sys.exit(EXIT_CODE_CONFIG_FAILED)
+
+    # 7. Import Input Files (OpenAPI definitions, LSR login sequence) (Task T2.5)
+    if config.inputs_dir and config.inputs_dir.exists():
+        try:
+            imported = client.import_inputs_from_directory(target_id, config.inputs_dir)
+            logger.info(f"Successfully processed {len(imported)} input file(s) for target {target_id}.")
+        except Exception as e:
+            logger.error(f"FATAL: Importing input files failed: {e}")
+            if target_id:
+                try:
+                    client.delete_target(target_id)
+                except Exception:
+                    pass
+            sys.exit(EXIT_CODE_IMPORT_FAILED)
 
     if args.clean_target and target_id:
         logger.info(f"Cleaning up target {target_id} (--clean-target set)...")

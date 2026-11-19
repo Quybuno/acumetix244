@@ -6,6 +6,7 @@ import logging
 import urllib.request
 import urllib.error
 from typing import Optional, Tuple, Dict, Any, List
+from pathlib import Path
 
 PROFILES = {
     "full": "11111111-1111-1111-1111-111111111111",
@@ -327,6 +328,101 @@ class AcunetixClient:
             f"login_kind='{current_config.get('login', {}).get('kind')}'"
         )
         return current_config
+
+    def upload_file_stream(self, init_endpoint: str, file_path: Path, filename: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Execute Acunetix two-step file upload:
+        Step 1: POST init_endpoint with {"name": filename, "size": size} -> returns upload_url
+        Step 2: POST upload_url with raw bytes, Content-Range, Content-Disposition -> returns 201/204
+        """
+        p = Path(file_path)
+        if not p.exists():
+            raise FileNotFoundError(f"File to upload not found: {file_path}")
+
+        file_bytes = p.read_bytes()
+        file_len = len(file_bytes)
+        fname = filename or p.name
+
+        # Step 1: Request upload URL
+        status, init_resp = self.request(init_endpoint, method="POST", data={"name": fname, "size": file_len})
+        if status not in [200, 201] or not isinstance(init_resp, dict) or "upload_url" not in init_resp:
+            raise ValueError(f"Upload initialization failed for {fname}: HTTP {status}, response: {init_resp}")
+
+        upload_rel_url = init_resp["upload_url"]
+        upload_full_url = f"{self.base_url}{upload_rel_url}"
+
+        # Step 2: Upload raw stream with Content-Range & Content-Disposition
+        headers = {
+            "Content-Type": "application/octet-stream",
+            "Content-Range": f"bytes 0-{file_len - 1}/{file_len}",
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "X-Auth": self.api_key
+        }
+        req = urllib.request.Request(upload_full_url, data=file_bytes, method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=30.0) as resp:
+                up_status = resp.getcode()
+                if up_status not in [200, 201, 202, 204]:
+                    raise ValueError(f"Upload failed for {fname}: HTTP {up_status}")
+        except urllib.error.HTTPError as e:
+            raise ValueError(f"Upload stream error for {fname}: HTTP {e.code}: {e.read().decode('utf-8', errors='ignore')}")
+
+        self.logger.info(f"File '{fname}' ({file_len} bytes) uploaded successfully to {upload_rel_url}.")
+        return init_resp
+
+    def import_api_definition(self, target_id: str, file_path: Path) -> Dict[str, Any]:
+        """
+        Upload API definition (OpenAPI/Swagger/Postman/HAR/XML) to target configuration imports.
+        """
+        init_endpoint = f"/api/v1/targets/{target_id}/configuration/imports"
+        res = self.upload_file_stream(init_endpoint, file_path)
+        return res
+
+    def import_login_sequence(self, target_id: str, file_path: Path) -> Dict[str, Any]:
+        """
+        Upload Login Sequence (.lsr) to target configuration login_sequence.
+        Also activates sequence login mode on target configuration.
+        """
+        init_endpoint = f"/api/v1/targets/{target_id}/configuration/login_sequence"
+        res = self.upload_file_stream(init_endpoint, file_path)
+        self.request(f"/api/v1/targets/{target_id}/configuration", method="PATCH", data={"login": {"kind": "sequence"}})
+        self.logger.info(f"Target {target_id} login mode set to 'sequence' from {file_path.name}.")
+        return res
+
+    def import_inputs_from_directory(self, target_id: str, inputs_dir: Path) -> List[Dict[str, Any]]:
+        """
+        Scan directory and import all supported input files (.lsr, .json, .yaml, .yml, .xml, .har, .saz).
+        """
+        inp_path = Path(inputs_dir)
+        if not inp_path.exists() or not inp_path.is_dir():
+            self.logger.info(f"Inputs directory '{inputs_dir}' does not exist or is empty. Skipping file import.")
+            return []
+
+        imported_files = []
+        for file in sorted(inp_path.iterdir()):
+            if not file.is_file():
+                continue
+
+            fname_lower = file.name.lower()
+            if fname_lower.endswith(".lsr"):
+                self.logger.info(f"Found Login Sequence file: {file.name}. Uploading...")
+                res = self.import_login_sequence(target_id, file)
+                imported_files.append({"type": "login_sequence", "name": file.name, "result": res})
+            elif any(fname_lower.endswith(ext) for ext in [".json", ".yaml", ".yml", ".xml", ".har", ".saz"]):
+                # Skip options.json if present
+                if fname_lower == "options.json":
+                    continue
+                self.logger.info(f"Found API/import definition file: {file.name}. Uploading...")
+                res = self.import_api_definition(target_id, file)
+                imported_files.append({"type": "api_import", "name": file.name, "result": res})
+
+        # Verify imported files on Acunetix
+        status, imports_list = self.request(f"/api/v1/targets/{target_id}/configuration/imports")
+        if status == 200 and isinstance(imports_list, dict):
+            files = imports_list.get("files", [])
+            self.logger.info(f"Target {target_id} now has {len(files)} imported file(s) registered in Acunetix.")
+
+        return imported_files
 
     def delete_target(self, target_id: str) -> bool:
         """

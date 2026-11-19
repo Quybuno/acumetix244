@@ -373,3 +373,21 @@
       - `custom_headers`: gồm `X-Security-Scan: DeepReview-Agent` và `X-Custom-Env: LocalTest`.
       - `login`: dạng `automatic` với username `admin@juice-sh.op` và mật khẩu được mã hóa an toàn.
     - Xóa dọn dẹp target thành công (`HTTP 204`), mật khẩu mục tiêu không bị lộ trong stdout/log.
+
+### T2.5: Nạp tệp nhập và định nghĩa API vào target
+- **Đã làm**:
+  - Nghiên cứu cơ chế upload 2 bước (2-step upload) của Acunetix:
+    - Bước 1: Khởi tạo tải tệp qua `POST /api/v1/targets/{target_id}/configuration/imports` (hoặc `.../login_sequence`) với payload `{"name": filename, "size": filesize}` nhận `upload_url` (`/uploads/<uuid>`).
+    - Bước 2: Tải luồng nhị phân trực tiếp qua `POST {upload_url}` kèm các header bắt buộc: `Content-Type: application/octet-stream`, `Content-Range: bytes 0-{size-1}/{size}`, `Content-Disposition: attachment; filename="{filename}"` và `X-Auth`. Nhận mã trạng thái `204 No Content`.
+  - Mở rộng lớp `AcunetixClient` trong `driver/client.py`:
+    - `upload_file_stream(init_endpoint, file_path, filename)`: hàm chuẩn hóa thực thi luồng tải 2 bước.
+    - `import_api_definition(target_id, file_path)`: nạp định nghĩa API (OpenAPI 3.0, Swagger, Postman, XML, HAR) vào cấu hình import của target.
+    - `import_login_sequence(target_id, file_path)`: nạp chuỗi đăng nhập (`.lsr`) chuẩn định dạng JSON actions/restrictions và tự động kích hoạt `PATCH /api/v1/targets/{target_id}/configuration` với `{"login": {"kind": "sequence"}}`.
+    - `import_inputs_from_directory(target_id, inputs_dir)`: tự động quét thư mục tệp nhập, phân loại và tải toàn bộ các tệp `.lsr` và định nghĩa API lên target, sau đó đối soát lại qua `GET /api/v1/targets/{target_id}/configuration/imports`.
+  - Cập nhật `driver/main.py`: tích hợp bước nạp tệp nhập vào luồng thực thi chính sau khi cấu hình target, xử lý ngoại lệ và mã thoát lỗi riêng `13` (`EXIT_CODE_IMPORT_FAILED`).
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t25_imports.py`:
+    - Driver quét thư mục `inputs/`, phát hiện và nạp thành công 2 tệp: `login_flow.lsr` (756 bytes) và `openapi_juice.json` (554 bytes).
+    - Gọi trực tiếp `GET /api/v1/targets/{target_id}/configuration/imports` trên Acunetix: tệp `openapi_juice.json` được ghi nhận với `status: True`.
+    - Gọi trực tiếp `GET /api/v1/targets/{target_id}/configuration`: trường `login.kind` đã tự động chuyển sang `sequence`.
+    - Dọn dẹp target thành công, không có bất kỳ mật khẩu hay token nào rò rỉ trong log. Driver kết thúc với mã thoát 0.
