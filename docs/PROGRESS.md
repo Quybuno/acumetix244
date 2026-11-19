@@ -20,6 +20,7 @@
 | T1.3 | Hoàn thành | 2026-11-19 | Khởi động tuần tự Net -> Acunetix -> Probe readiness (nc + curl) với timeout -> Driver. Driver chỉ chạy khi Acunetix trả lời được. | Không |
 | T1.4 | Hoàn thành | 2026-11-19 | Tệp bí mật & tệp nhập gắn chỉ đọc (:ro) cho driver, không truyền qua biến môi trường (kiểm tra inspect không lộ), cô lập hoàn toàn với container khác, xóa sạch khi dọn. | Không |
 | T1.5 | Hoàn thành | 2026-11-19 | Cấu hình giới hạn tài nguyên pod giả (--memory, --cpus theo số đo T0.9), không dùng cờ privileged. Máy host chạy mượt mà không bị nghẽn. | Không |
+| T1.6 | Hoàn thành | 2026-11-19 | Thiết lập cơ chế hạn tối đa của pod giả (Job Timeout). Quá hạn tự động kill toàn bộ pod và đánh dấu lỗi SCAN_TIMEOUT. | Không |
 
 ## Chi tiết từng task
 
@@ -204,3 +205,17 @@
     - `HostConfig.NanoCpus`: Net = 0.1 CPU (100000000), Acunetix = 2.0 CPUs (2000000000), Driver = 0.5 CPUs (500000000).
     - `HostConfig.Privileged`: `False` trên toàn bộ 3 container.
     - Toàn bộ máy phát triển phản hồi bình thường, không bị chiếm dụng CPU/RAM quá mức.
+
+### T1.6: Hạn tối đa của pod giả (Job Timeout) và dừng tự động
+- **Đã làm**:
+  - Xây dựng hàm `kill_pod(scan_id)`: dừng khẩn cấp toàn bộ các container đang chạy của một lượt quét bằng `docker kill`.
+  - Xây dựng hàm `wait_pod_completion(scan_id, timeout_sec, poll_interval)`:
+    - Giám sát trạng thái thoát của container driver.
+    - Nếu thời gian chạy vượt quá trần hạn định của pod giả (`timeout_sec`), tự động kích hoạt `kill_pod(scan_id)`.
+    - Trả về đối tượng trạng thái chuẩn: `status: "TIMEOUT"`, `timed_out: True`, `error: "SCAN_TIMEOUT"`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/pod_manager.py test_t16`:
+    - Giả lập container driver bị treo (sleep 60s) với hạn Job Timeout thử nghiệm = 6 giây.
+    - Hàm giám sát phát hiện quá hạn sau 6.76s, lập tức gửi tín hiệu kill tới toàn bộ nhóm container (`scan-t16timeout-driver`, `scan-t16timeout-acunetix`, `scan-t16timeout-net`).
+    - Kiểm tra `docker inspect`: cả 3 container lập tức chuyển sang trạng thái `exited`.
+    - Kết quả trả về đúng chuẩn `error: SCAN_TIMEOUT`. Dọn dẹp sạch sẽ sau test.

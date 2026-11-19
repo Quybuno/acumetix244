@@ -224,6 +224,61 @@ def launch_ordered_pod(
         "status": "LAUNCHED"
     }
 
+def kill_pod(scan_id: str) -> list:
+    """Immediately kill all running containers for a scan-id"""
+    containers = list_pod_containers(scan_id)
+    running_names = [c["name"] for c in containers if c["state"] == "running"]
+    if running_names:
+        subprocess.run(["docker", "kill"] + running_names, capture_output=True)
+    return running_names
+
+def wait_pod_completion(scan_id: str, timeout_sec: int = 1800, poll_interval: float = 1.0) -> dict:
+    """
+    Monitor driver container until it exits or maximum pod timeout is reached.
+    If timeout is exceeded, kills the pod and returns SCAN_TIMEOUT.
+    """
+    driver_name = get_container_name(scan_id, "driver")
+    start_time = time.time()
+    
+    while True:
+        elapsed = time.time() - start_time
+        if elapsed >= timeout_sec:
+            # Maximum Job timeout exceeded -> terminate pod
+            killed = kill_pod(scan_id)
+            return {
+                "scan_id": scan_id,
+                "status": "TIMEOUT",
+                "exit_code": None,
+                "timed_out": True,
+                "error": "SCAN_TIMEOUT",
+                "elapsed_sec": round(elapsed, 2),
+                "killed_containers": killed
+            }
+        
+        # Check driver state
+        try:
+            out = subprocess.check_output(
+                ["docker", "inspect", driver_name, "--format", "{{.State.Status}}|{{.State.ExitCode}}"],
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
+            status_str, exit_code_str = out.split("|")
+            exit_code = int(exit_code_str)
+            
+            if status_str == "exited":
+                return {
+                    "scan_id": scan_id,
+                    "status": "COMPLETED" if exit_code == 0 else "FAILED",
+                    "exit_code": exit_code,
+                    "timed_out": False,
+                    "error": None if exit_code == 0 else f"DRIVER_EXIT_{exit_code}",
+                    "elapsed_sec": round(elapsed, 2)
+                }
+        except Exception:
+            # Container might not be visible yet or inspect failed temporarily
+            pass
+        
+        time.sleep(poll_interval)
+
 def cleanup_pod(scan_id: str):
     """Remove all containers for a scan-id"""
     containers = list_pod_containers(scan_id)
@@ -358,3 +413,36 @@ if __name__ == "__main__":
             print("Cleaning up...")
             cleanup_pod(test_id)
             print("Cleaned up. T1.5 verified.")
+
+    elif len(sys.argv) > 1 and sys.argv[1] == "test_t16":
+        test_id = "t16timeout"
+        print(f"Testing Job maximum timeout and kill enforcement for {test_id}...")
+        try:
+            # Driver hangs for 60 seconds
+            res = launch_ordered_pod(
+                test_id,
+                driver_cmd=["sh", "-c", "echo 'Driver hanging...'; sleep 60; exit 0"],
+                timeout_ready=60
+            )
+            print("Launch result:", res)
+            
+            # Wait with a short maximum timeout of 6 seconds to simulate job timeout
+            print("Waiting with maximum Job timeout = 6 seconds...")
+            wait_res = wait_pod_completion(test_id, timeout_sec=6, poll_interval=1.0)
+            print("Wait completion result:", wait_res)
+            
+            assert wait_res["timed_out"] is True, "Wait did not report timed_out=True"
+            assert wait_res["status"] == "TIMEOUT", f"Expected TIMEOUT status, got {wait_res['status']}"
+            assert wait_res["error"] == "SCAN_TIMEOUT", f"Expected error SCAN_TIMEOUT, got {wait_res['error']}"
+            
+            # Verify containers are no longer running
+            containers = list_pod_containers(test_id)
+            for c in containers:
+                assert c["state"] != "running", f"Container {c['name']} still running after timeout kill!"
+                print(f"Verified {c['name']}: killed, state={c['state']}")
+            
+            print("T1.6 Job maximum timeout and termination PASSED!")
+        finally:
+            print("Cleaning up...")
+            cleanup_pod(test_id)
+            print("Cleaned up. T1.6 verified.")
