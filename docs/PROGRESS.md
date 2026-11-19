@@ -14,6 +14,7 @@
 | T0.8 | Hoàn thành | 2026-11-19 | Phân tích chứng chỉ TLS của Acunetix (tự ký bởi Acunetix WVS Root Authority, SAN=DNS:Acunetix). Chốt Driver dùng Insecure TLS trên localhost. | Không |
 | T0.9 | Hoàn thành | 2026-11-19 | Đo RAM, CPU, ổ đĩa khi chạy Acunetix. Chốt giới hạn tài nguyên pod giả và xác nhận trần đồng thời bằng 1. | Không |
 | T0.10 | Hoàn thành | 2026-11-19 | Khởi động OWASP Juice Shop làm đích thử cục bộ trên port 3000 (có đăng nhập, API REST, đường dẫn đăng xuất /#/logout). | Không |
+| T0.11 | Hoàn thành | 2026-11-19 | Xóa và tạo lại instance liên tiếp: xác nhận dữ liệu sạch 100% (0 target, 0 scan) và license tự kích hoạt thành công đúng chuẩn pod giả dùng 1 lần. | Không |
 
 ## Chi tiết từng task
 
@@ -123,3 +124,16 @@
   - Kiểm tra cổng dịch vụ: Đang lắng nghe tại `http://127.0.0.1:3000`.
   - Các thành phần kiểm thử: Form đăng nhập (`/#/login`), API sản phẩm & giỏ hàng (`/rest/products/search`), đường dẫn đăng xuất (`/#/logout`).
 - **Quy tắc an toàn**: Đích thử hoàn toàn cô lập cục bộ, toàn bộ các lượt quét thử nghiệm chỉ trỏ tới đích này.
+
+### T0.11: Xóa instance rồi tạo lại từ đầu
+- **Đã làm**:
+  - Viết kịch bản kiểm chứng tự động `scripts/verify_ephemeral.py`:
+    1. Tạo container 1 sạch (`ephemeral_test`).
+    2. Kiểm tra trạng thái sạch: `Targets=0`, `Scans=0`, `LicenseActivated=True`.
+    3. Thêm target để làm bẩn trạng thái container 1.
+    4. Xóa hoàn toàn container 1 (`docker rm -f ephemeral_test`).
+    5. Tạo container 2 mới toanh (`ephemeral_test2`) cùng cổng.
+    6. Kiểm tra lại trạng thái container 2: Dữ liệu bẩn của container 1 mất sạch hoàn toàn (`Targets=0`, `Scans=0`), license tự động kích hoạt lại thành công (`LicenseActivated=True`).
+    7. Dọn dẹp container 2.
+- **Kết quả & Bằng chứng**:
+  - Script chạy thành công (`verify_ephemeral.py` PASS toàn bộ assertions). Đảm bảo tính chất ephemeral (dùng một lần rồi vứt bỏ) hoàn hảo cho thiết kế pod giả mỗi lượt quét.
