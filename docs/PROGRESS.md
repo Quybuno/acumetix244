@@ -836,6 +836,34 @@
     6. Giải phóng khi Launcher ném lỗi (`LAUNCH_FAILED`): Scan thất bại được đánh dấu đúng và giải phóng trần ngay, hệ thống tự phục hồi cho scan kế tiếp.
     7. Thử nghiệm Race Condition đa luồng với 20 luồng đồng thời: **ĐÚNG DUY NHẤT 1 luồng thành công (201 Created), ĐÚNG 19 luồng còn lại bị từ chối dứt khoát với HTTP 429**, số lượng active scans trong DB không bao giờ vượt quá 1.
 
+### T3.12: Phân quyền người dùng tạo/xem lượt quét theo Deep Review (ai được tạo Acunetix, ai được xem; từ chối 403 khi không đủ quyền)
+- **Đã làm**:
+  - Tạo `backend/auth/authorization.py` và `backend/auth/__init__.py`:
+    - Định nghĩa lớp `UserContext` biểu diễn danh tính, vai trò và phạm vi dự án của người dùng từ gateway headers (`X-User-Id`, `X-User-Roles`, `X-User-Projects`, `X-User-Permissions`).
+    - Định nghĩa bảng phân quyền chuẩn của Deep Review (`ROLE_PERMISSIONS`):
+      - `ADMIN`: Toàn quyền trên mọi project (`*`) và mọi engine.
+      - `SECURITY_LEAD`, `SECURITY_ENGINEER`: Được cấp quyền quét DAST (`scan:create:acunetix`), quét SAST (`scan:create:fortify`), xem (`scan:view`), hủy (`scan:cancel`) trong project của mình.
+      - `DEVELOPER`: Được tạo quét mã nguồn Fortify (`scan:create:fortify`), xem scan (`scan:view`). **KHÔNG ĐƯỢC PHÉP** tự ý kích hoạt Acunetix DAST tấn công mục tiêu thực tế (`scan:create:acunetix`) và không được hủy scan.
+      - `AUDITOR`, `VIEWER`: Chỉ có quyền xem kết quả (`scan:view`).
+    - Cài đặt `AuthorizationService`:
+      - `check_create_scan`: Kiểm tra quyền thành viên trong project và quyền engine tương ứng (`scan:create:acunetix` hoặc `scan:create:fortify`).
+      - `check_view_scan`: Kiểm tra quyền `scan:view` và ranh giới project của lượt quét.
+      - `check_cancel_scan`: Kiểm tra quyền `scan:cancel` và ranh giới project.
+      - `check_list_scans`: Kiểm tra quyền xem danh sách trong phạm vi project được cấp phép.
+  - Cập nhật `backend/api/scan_handler.py`:
+    - Tích hợp `AuthorizationService` vào toàn bộ các endpoints: `POST /api/v1/scans`, `GET /api/v1/scans`, `GET /api/v1/scans/{id}`, `DELETE /api/v1/scans/{id}`.
+    - Trả về HTTP 403 Forbidden với mã lỗi `FORBIDDEN` và thông điệp giải thích rõ ràng khi người dùng không đủ quyền hoặc truy cập trái phép ranh giới project.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t312_authorization.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t312_authorization.py` PASS 100% tất cả 6 test suites:
+    1. Quyền tạo Acunetix: `DEVELOPER` và `AUDITOR` bị từ chối dứt khoát với HTTP 403 (`lacks permission 'scan:create:acunetix'`). `SECURITY_ENGINEER` được chấp thuận tạo scan (201 Created).
+    2. Quyền tạo Fortify: `DEVELOPER` được phép tạo Fortify SAST (201 Created). `VIEWER` bị từ chối với HTTP 403.
+    3. Ranh giới Project (Multi-tenant): Người dùng thuộc `proj-banking` cố tạo hoặc xem scan thuộc `proj-secret-payments` đều bị từ chối lập tức với HTTP 403.
+    4. Quyền xem kết quả: Thành viên project (`AUDITOR`) xem scan bình thường (200 OK). Người ngoài project (`dev_outsider`) bị chặn với HTTP 403.
+    5. Quyền hủy lượt quét: `DEVELOPER` cố hủy scan bị chặn với HTTP 403. `SECURITY_LEAD` hủy thành công (200 OK).
+    6. Toàn quyền Admin: `ADMIN` có toàn quyền tạo, xem, hủy trên bất kỳ project nào.
+
+
 
 
 
