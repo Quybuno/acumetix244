@@ -22,6 +22,10 @@ from backend.parsers.acunetix_parser import (
     UnifiedReport,
     ParseException
 )
+from backend.services.state_machine import (
+    ScanStateMachine,
+    InvalidStateTransitionError
+)
 
 # Maximum webhook payload limit (50 MB) based on Phase 0 measurements
 MAX_WEBHOOK_PAYLOAD_SIZE = 50 * 1024 * 1024  # 52,428,800 bytes
@@ -38,12 +42,14 @@ class WebhookService:
         repo: ScanRepository,
         logger: Optional[logging.Logger] = None,
         max_payload_size: int = MAX_WEBHOOK_PAYLOAD_SIZE,
-        parser: Optional[AcunetixReportParser] = None
+        parser: Optional[AcunetixReportParser] = None,
+        state_machine: Optional[ScanStateMachine] = None
     ):
         self.repo = repo
         self.logger = logger or logging.getLogger("deepreview_webhook")
         self.max_payload_size = max_payload_size
         self.parser = parser or AcunetixReportParser()
+        self.state_machine = state_machine or ScanStateMachine(repo=self.repo, logger=self.logger)
 
     def process_webhook(
         self,
@@ -117,9 +123,8 @@ class WebhookService:
                 "scan_id": scan_id
             }
 
-        # 7. Transition to 'PARSING' state
-        self.repo.update_scan_status(scan_id, new_status="PARSING")
-        self.logger.info(f"Scan {scan_id} status transitioned: SCANNING -> PARSING.")
+        # 7. Transition to 'PARSING' state using state machine
+        self.state_machine.transition(scan_id, new_status="PARSING")
 
         # 8. Persist raw result record in DB
         vulns = payload.get("vulnerabilities", [])
@@ -155,12 +160,13 @@ class WebhookService:
                     "scan_id": scan_id,
                     "next_state": "FAILED"
                 }
-            # Transition to terminal status
+            # Transition to terminal status via state machine
             final_status = "COMPLETED" if driver_status == "COMPLETED" else "FAILED"
-            self.repo.update_scan_status(
+            fail_code = payload.get("error_code") or "SCAN_FAILED" if final_status == "FAILED" else None
+            self.state_machine.transition(
                 scan_id=scan_id,
                 new_status=final_status,
-                error_code=payload.get("error_code") if final_status == "FAILED" else None
+                error_code=fail_code
             )
             return {
                 "status": "accepted",
@@ -185,7 +191,7 @@ class WebhookService:
         """
         Parses raw scan payload into UnifiedReport using AcunetixReportParser.
         If parsing fails (ParseException or unexpected error):
-        - Marks scan as FAILED with error_code='PARSE_FAILED'.
+        - Transitions scan to FAILED with error_code='PARSE_FAILED'.
         - Logs error safely without leaking secrets.
         - Returns None, preventing any unhandled backend crashes.
         """
@@ -203,20 +209,26 @@ class WebhookService:
                 f"Report parsing failed for scan {scan_id}: {pe}. "
                 f"Transitioning scan state to FAILED with error_code='PARSE_FAILED'."
             )
-            self.repo.update_scan_status(
-                scan_id=scan_id,
-                new_status="FAILED",
-                error_code="PARSE_FAILED"
-            )
+            try:
+                self.state_machine.transition(
+                    scan_id=scan_id,
+                    new_status="FAILED",
+                    error_code="PARSE_FAILED"
+                )
+            except Exception as e_trans:
+                self.logger.error(f"State transition error: {e_trans}")
             return None
         except Exception as e:
             self.logger.error(
                 f"Unexpected error during report parsing for scan {scan_id}: {e}. "
                 f"Transitioning scan state to FAILED with error_code='PARSE_FAILED'."
             )
-            self.repo.update_scan_status(
-                scan_id=scan_id,
-                new_status="FAILED",
-                error_code="PARSE_FAILED"
-            )
+            try:
+                self.state_machine.transition(
+                    scan_id=scan_id,
+                    new_status="FAILED",
+                    error_code="PARSE_FAILED"
+                )
+            except Exception as e_trans:
+                self.logger.error(f"State transition error: {e_trans}")
             return None

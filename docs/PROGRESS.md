@@ -725,6 +725,38 @@
     6. Kiểm thử xử lý lỗi dữ liệu hỏng: Payload `None`, chuỗi rỗng, JSON sai cú pháp, kiểu dữ liệu sai, thiếu trường title, mức severity lạ -> 100% đều kích hoạt an toàn `ParseException(error_code='PARSE_FAILED')`.
     7. Tích hợp với `WebhookService`: Khi nhận payload lỗi, WebhookService tự động chuyển trạng thái scan sang `FAILED` với `error_code="PARSE_FAILED"`, backend không bị sập và tiếp tục phục vụ các lượt quét hợp lệ khác bình thường.
 
+### T3.8: Máy trạng thái (chuyển một chiều SCANNING -> PARSING -> COMPLETED / FAILED, lượt thất bại luôn kèm mã lỗi, vượt trần từ chối ngay khi tạo)
+- **Đã làm**:
+  - Tạo `backend/services/state_machine.py`:
+    - Định nghĩa lớp `ScanStateMachine` quản lý toàn bộ vòng đời và chuyển đổi trạng thái của lượt quét theo đặc tả mục 7.2 và 7.4 trong `docs/PLAN.md`.
+    - **Nguyên tắc chuyển một chiều nghiêm ngặt (Strict One-Way Transitions)**:
+      - `SCANNING` $\rightarrow$ chỉ cho phép chuyển sang `PARSING` hoặc `FAILED`.
+      - `PARSING` $\rightarrow$ chỉ cho phép chuyển sang `COMPLETED` hoặc `FAILED`.
+      - Cấm tuyệt đối chuyển lùi (`PARSING` $\rightarrow$ `SCANNING`).
+      - Cấm tuyệt đối nhảy cóc (`SCANNING` $\rightarrow$ `COMPLETED` mà không qua `PARSING`).
+    - **Tính bất biến của trạng thái kết thúc (Terminal States Immutability)**:
+      - `COMPLETED` và `FAILED` là hai trạng thái cuối cùng, tuyệt đối không được phép chuyển sang bất kỳ trạng thái nào khác.
+    - **Quy tắc bắt buộc kèm mã lỗi chuẩn đối với FAILED**:
+      - Mọi lượt quét chuyển sang trạng thái `FAILED` bắt buộc phải có `error_code` hợp lệ thuộc danh mục đã duyệt: `JOB_LOST`, `CALLBACK_LOST`, `PARSE_FAILED`, `SCAN_TIMEOUT`, `SCAN_FAILED`, `LOGIN_FAILED`, `MANUAL_INTERVENTION`, `LOW_COVERAGE`, `LAUNCH_FAILED`, `CANCELLED_BY_USER`, `CONCURRENCY_LIMIT_EXCEEDED`.
+      - Chuyển sang `FAILED` mà thiếu mã lỗi hoặc mã lỗi lạ sẽ bị chặn ngay lập tức với `InvalidStateTransitionError`.
+      - Chuyển sang `COMPLETED` không được mang theo mã lỗi.
+    - **Ghi nhận thời gian hoàn tất**:
+      - Tự động ghi nhận `completed_at` theo chuẩn ISO UTC ngay khi lượt quét chuyển sang trạng thái kết thúc (`COMPLETED` hoặc `FAILED`).
+    - **Quy tắc trần đồng thời và không xếp hàng (Zero Queueing)**:
+      - Lượt quét đang ở trạng thái hoạt động (`SCANNING` hoặc `PARSING`) được tính vào active scans. Khi đạt trần đồng thời (`MAX_CONCURRENT_SCANS = 1`), yêu cầu tạo mới bị từ chối ngay lập tức với mã lỗi `CONCURRENCY_LIMIT_EXCEEDED` (HTTP 429), không đưa vào hàng đợi chờ. Chỉ khi lượt quét trước chuyển sang `COMPLETED` hoặc `FAILED`, lượt mới mới được phép tạo.
+  - Cập nhật `backend/models/scan.py`: Bổ sung các mã lỗi chuẩn vào `VALID_ERROR_CODES`.
+  - Cập nhật `backend/services/webhook_service.py`: Tích hợp `ScanStateMachine` cho toàn bộ các bước chuyển trạng thái khi nhận kết quả và phân tích.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t38_state_machine.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t38_state_machine.py` PASS 100% tất cả 6 test suites:
+    1. Vòng đời hợp lệ: `SCANNING` $\rightarrow$ `PARSING` $\rightarrow$ `COMPLETED` ghi nhận đúng `completed_at`, `error_code=None`.
+    2. Các nhánh thất bại: `SCANNING` $\rightarrow$ `FAILED` (kèm `JOB_LOST`), `SCANNING` $\rightarrow$ `PARSING` $\rightarrow$ `FAILED` (kèm `PARSE_FAILED`), tất cả đều ghi nhận đầy đủ mã lỗi và timestamp.
+    3. Ràng buộc mã lỗi: Chặn 100% các nỗ lực chuyển sang `FAILED` mà thiếu `error_code`, `error_code` rỗng, hoặc mã lỗi ngoài danh mục cho phép; chặn chuyển sang `COMPLETED` có `error_code`.
+    4. Bất biến trạng thái kết thúc: Chặn 100% các nỗ lực thay đổi trạng thái khi scan đã ở `COMPLETED` hoặc `FAILED`.
+    5. Cấm đi lùi và nhảy cóc: Chặn `PARSING` $\rightarrow$ `SCANNING` và `SCANNING` $\rightarrow$ `COMPLETED`.
+    6. Trần đồng thời = 1 và từ chối ngay lập tức: Khi có scan đang ở `SCANNING` hoặc `PARSING`, yêu cầu tạo mới lập tức bị từ chối với lỗi `ConcurrencyLimitError`; chỉ sau khi scan chuyển sang `COMPLETED` hoặc `FAILED`, scan mới được phép tạo ngay lập tức.
+
+
 
 
 
