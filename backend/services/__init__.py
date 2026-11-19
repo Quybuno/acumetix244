@@ -9,6 +9,8 @@ from backend.services.launcher import (
 from backend.services.options_segregator import OptionsSegregator, PRESET_PROFILE_MAP
 
 from backend.services.webhook_service import WebhookService, WebhookError, MAX_WEBHOOK_PAYLOAD_SIZE
+from backend.services.state_machine import ScanStateMachine, InvalidStateTransitionError
+from backend.services.reconciler import ScanReconciler
 
 __all__ = [
     "ScanService",
@@ -22,5 +24,8 @@ __all__ = [
     "PRESET_PROFILE_MAP",
     "WebhookService",
     "WebhookError",
-    "MAX_WEBHOOK_PAYLOAD_SIZE"
+    "MAX_WEBHOOK_PAYLOAD_SIZE",
+    "ScanStateMachine",
+    "InvalidStateTransitionError",
+    "ScanReconciler"
 ]

@@ -785,6 +785,35 @@
     6. `DELETE /api/v1/scans/{id}` trên scan đã `COMPLETED` hoặc `FAILED`: Từ chối dứt khoát với HTTP 409 Conflict.
     7. `DELETE /api/v1/scans/{id}` scan không tồn tại: Trả về HTTP 404 Not Found chuẩn xác.
 
+### T3.10: Reconciler chạy định kỳ mỗi phút: đóng lượt JOB_LOST khi Job biến mất, CALLBACK_LOST khi Job xong mà không có webhook, dọn dẹp container rác
+- **Đã làm**:
+  - Tạo `backend/services/reconciler.py`:
+    - Định nghĩa lớp `ScanReconciler` đối soát định kỳ trạng thái giữa cơ sở dữ liệu Backend và hạ tầng thực tế (Launcher/Docker/Pod) theo mục 7.4 và 7.5 trong `docs/PLAN.md`.
+    - **Phát hiện và xử lý `JOB_LOST`**:
+      - Quét các lượt quét đang ở `SCANNING`: nếu Job không còn tồn tại trên hạ tầng (`NOT_FOUND`) hoặc container bị crash/thất bại (`driver_exit_code != 0`, exit code khác 50) $\rightarrow$ đóng lượt quét với `FAILED` kèm `error_code="JOB_LOST"` và gọi `launcher.cleanup(scan_id)`.
+    - **Phát hiện và xử lý `CALLBACK_LOST`**:
+      - Nếu Job đã hoàn tất (`COMPLETED` hoặc driver exit code = 0 / 50) nhưng quá thời hạn chờ webhook (`callback_grace_period_seconds = 60s`, lớn hơn thời gian retry của driver) mà webhook vẫn chưa tới Backend $\rightarrow$ đóng lượt quét với `FAILED` kèm `error_code="CALLBACK_LOST"` và dọn dẹp tài nguyên.
+      - Nếu còn trong thời hạn chờ (`elapsed < grace_period`): Kiên nhẫn chờ driver gửi lại, không đóng nhầm lượt quét.
+    - **Kiểm soát trần thời gian Job `SCAN_TIMEOUT`**:
+      - Nếu lượt quét chạy vượt quá hạn định tối đa (`max_scan_duration_seconds = 1860s`) $\rightarrow$ gửi tín hiệu `launcher.kill()`, `launcher.cleanup()`, và đóng lượt quét với `FAILED` kèm `error_code="SCAN_TIMEOUT"`.
+    - **Dọn dẹp tài nguyên rác (Orphaned Infrastructure Cleanup)**:
+      - Quét các lượt quét đã ở terminal state (`COMPLETED` hoặc `FAILED`) mà hạ tầng vẫn còn sót container hoặc tệp bí mật $\rightarrow$ tự động dọn sạch dứt điểm bằng `launcher.cleanup(scan_id)`.
+    - **Hỗ trợ chu kỳ chạy đơn lẻ và luồng nền**:
+      - Phương thức `reconcile_once()` thực thi một chu kỳ kiểm tra và trả về báo cáo kết quả số lượng lượt quét được xử lý.
+      - Phương thức `start(interval_seconds=60)` và `stop()` vận hành luồng nền an toàn, không rò rỉ thread hay chặn tiến trình.
+  - Cập nhật `backend/services/__init__.py`: Xuất khẩu `ScanReconciler`.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t310_reconciler.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t310_reconciler.py` PASS 100% tất cả 7 khía cạnh kiểm thử:
+    1. Phát hiện Job biến mất khỏi hạ tầng: Chuyển sang `FAILED`, gán đúng `error_code='JOB_LOST'`, gọi `launcher.cleanup()`.
+    2. Phát hiện Job container crash (OOM exit code 137): Chuyển sang `FAILED`, gán đúng `error_code='JOB_LOST'`.
+    3. Phát hiện mất webhook sau thời hạn chờ: Scan tuổi 90s (> 60s grace period) được chuyển sang `FAILED`, gán đúng `error_code='CALLBACK_LOST'`.
+    4. Tôn trọng grace period: Scan tuổi 15s (< 60s) vẫn được giữ nguyên ở `SCANNING` để chờ driver retry gửi webhook.
+    5. Phát hiện vượt trần thời gian (chạy 2000s > 1800s): Kích hoạt `launcher.kill()`, `launcher.cleanup()`, gán đúng `error_code='SCAN_TIMEOUT'`.
+    6. Dọn dẹp tài nguyên rác: Tự động phát hiện và xóa sạch container sót lại của các scan đã xong.
+    7. Vòng đời luồng nền: `start()` và `stop()` chạy và kết thúc mượt mà trong 2.2 giây.
+
+
 
 
 
