@@ -7,6 +7,7 @@
 | T0.1 | Hoàn thành | 2026-11-19 | Đã kiểm tra image acunetix:24.4 (inspect, ps). Image tự chứa (all-in-one). Chốt pod giả gồm 2 container (Acunetix + Driver). | Không |
 | T0.2 | Hoàn thành | 2026-11-19 | Chạy container sạch không mount volume, xác thực đăng nhập tự động qua API POST /api/v1/me/login thành công (HTTP 204), không cần giao diện. | Lưu ý cấp quyền thư mục license cho acunetix user |
 | T0.3 | Hoàn thành | 2026-11-19 | Kích hoạt license tự động qua file (license_info.json, wa_data.dat) không qua UI. API /api/v1/info xác nhận activated=true, hạn đến năm 2123. | Không |
+| T0.4 | Hoàn thành | 2026-11-19 | Lấy thông tin xác thực API bằng lệnh (API key & Session token). Ghi rõ đặc tả header gửi trong HTTP request. | Không |
 
 ## Chi tiết từng task
 
@@ -41,3 +42,25 @@
   - Trạng thái giấy phép: `activated: true`, `expired: false`, `license_key: "Pwn3rzs-CyberArsenal"`, hạn dùng `2123-09-19`.
   - Các tính năng hỗ trợ: `api_key`, `continuous_scans`, `export_waf`, `multi_engine`, `scanning_profiles`, `pause_resume`, `vuln_retest`, `offline_activations`.
   - Toàn bộ quá trình hoàn toàn tự động bằng tệp, không qua giao diện.
+
+### T0.4: Lấy thông tin xác thực API (token hoặc API key) bằng lệnh
+- **Đã làm**:
+  - Kiểm chứng cả hai phương thức xác thực bằng dòng lệnh:
+    1. **Phương thức API Key (Khuyên dùng cho Driver)**:
+       - Lấy bằng lệnh qua GraphQL mutation: `POST https://127.0.0.1:8888/graphql/` với body `{"query": "mutation { generateApiKey }"}`.
+       - Hoặc thiết lập trực tiếp trong cơ sở dữ liệu qua SQL `UPDATE users SET api_key='...'`.
+       - Cách gửi vào header:
+         ```http
+         X-Auth: <api_key>
+         ```
+         *(Không cần gửi cookie `ui_session`, không phụ thuộc session timeout).*
+    2. **Phương thức Session Token**:
+       - Lấy qua API: `POST https://127.0.0.1:8888/api/v1/me/login` với body `{"email": "admin@acunetix.com", "password": "<sha256_password>", "remember_me": false}`.
+       - Trả về header `X-Auth` và cookie `ui_session`.
+       - Cách gửi vào header:
+         ```http
+         X-Auth: <token>
+         Cookie: ui_session=<token>
+         ```
+- **Kết quả & Bằng chứng**:
+  - Đã gọi thử `GET /api/v1/targets`, `GET /api/v1/scans`, `GET /api/v1/info` với header `X-Auth: 1986ad8c0a5b3df4d7028d5f3c06e936cc6423db254c54503b2a9510552130f6c` thành công đạt HTTP `200 OK`.
