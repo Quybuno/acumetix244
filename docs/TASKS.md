@@ -1,6 +1,5 @@
 # Task xây dựng hệ thống quét Acunetix trên Docker
 
-Nov 19, 2026 · @Cuong Ruby
 
 ## 1. Mục tiêu và phạm vi
 

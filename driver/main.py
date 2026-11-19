@@ -16,6 +16,7 @@ if str(BASE_DIR) not in sys.path:
 from driver.config import load_config
 from driver.logger import setup_logger
 from driver.client import AcunetixClient
+from driver.webhook import WebhookSender
 
 EXIT_CODE_ACUNETIX_NOT_READY = 10
 EXIT_CODE_AUTH_FAILED = 11
@@ -23,6 +24,7 @@ EXIT_CODE_CONFIG_FAILED = 12
 EXIT_CODE_IMPORT_FAILED = 13
 EXIT_CODE_SCAN_TIMEOUT = 14
 EXIT_CODE_SCAN_FAILED = 15
+EXIT_CODE_WEBHOOK_FAILED = 50
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deep Review Acunetix Scanner Driver")
@@ -40,6 +42,8 @@ def parse_args():
     parser.add_argument("--clean-target", action="store_true", default=True, help="Delete target after scan (default: True)")
     parser.add_argument("--keep-target", action="store_true", help="Keep target on Acunetix after scan (default: False, target is deleted)")
     parser.add_argument("--no-scan", action="store_true", help="Skip scan trigger (dry-run / setup only)")
+    parser.add_argument("--webhook-retries", type=int, default=3, help="Max retry attempts for webhook delivery")
+    parser.add_argument("--webhook-retry-delay", type=float, default=1.0, help="Initial retry delay in seconds")
     return parser.parse_args()
 
 def main():
@@ -142,6 +146,7 @@ def main():
 
     # 8. Start Scan & Poll Status (Task T2.6)
     scan_id = None
+    scan_result_payload = None
     if not args.no_scan:
         try:
             profile = config.scan_options.get("profile")
@@ -255,6 +260,27 @@ def main():
         logger.info(f"Cleaning up target {target_id}...")
         client.delete_target(target_id)
         logger.info("Target cleaned up successfully.")
+
+    # 12. Dispatch Results to Webhook (Task T2.10)
+    webhook_url = config.webhook_url or args.webhook_url
+    webhook_token = config.get_webhook_token()
+    if webhook_url and scan_result_payload:
+        sender = WebhookSender(
+            webhook_url=webhook_url,
+            webhook_token=webhook_token,
+            logger=logger,
+            max_retries=args.webhook_retries,
+            retry_delay=args.webhook_retry_delay
+        )
+        delivered = sender.send_results(scan_result_payload)
+        if not delivered:
+            logger.error(
+                f"FATAL: Webhook delivery failed after {args.webhook_retries} retry attempts. "
+                f"Exiting with code 50 (CALLBACK_LOST)."
+            )
+            sys.exit(EXIT_CODE_WEBHOOK_FAILED)
+    elif not webhook_url:
+        logger.info("No webhook_url configured. Scan execution finished without callback.")
 
     return 0
 
