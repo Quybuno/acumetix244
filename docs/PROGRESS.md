@@ -12,6 +12,7 @@
 | T0.6 | Hoàn thành | 2026-11-19 | Lập tài liệu đặc tả chuỗi gọi API và kiểm chứng bằng script tự động hóa chuỗi đầy đủ: Target -> Config -> Scan -> Poll -> Abort -> Delete. | Không |
 | T0.7 | Hoàn thành | 2026-11-19 | Trích xuất JSON mẫu thực tế (34 lỗ hổng web, 8 lỗ hổng API, crawl statistics). Xác nhận KHÔNG CẦN chọn mẫu báo cáo khi lấy qua API. | Không |
 | T0.8 | Hoàn thành | 2026-11-19 | Phân tích chứng chỉ TLS của Acunetix (tự ký bởi Acunetix WVS Root Authority, SAN=DNS:Acunetix). Chốt Driver dùng Insecure TLS trên localhost. | Không |
+| T0.9 | Hoàn thành | 2026-11-19 | Đo RAM, CPU, ổ đĩa khi chạy Acunetix. Chốt giới hạn tài nguyên pod giả và xác nhận trần đồng thời bằng 1. | Không |
 
 ## Chi tiết từng task
 
@@ -101,3 +102,16 @@
 - **Kết luận kiến trúc**:
   - Driver chạy chung mạng nội bộ loopback của pod giả với Acunetix (`localhost`), kênh truyền khép kín trong namespace mạng riêng của container.
   - Driver bắt buộc thiết lập cấu hình bỏ qua xác thực TLS CA/hostname (`InsecureSkipVerify: true` hoặc `verify_mode=CERT_NONE`) khi gọi tới `https://localhost:3443/api/v1` để tránh lỗi `SSLCertVerificationError`.
+
+### T0.9: Đo RAM, CPU, ổ cứng khi quét và xác nhận trần đồng thời bằng 1
+- **Đã làm**:
+  - Đo tài nguyên thực tế bằng `docker stats --no-stream` và `docker system df`.
+  - **Kết quả đo**:
+    - Khi Acunetix chạy ở trạng thái nhàn rỗi: RAM chiếm ~640MB - 920MB, CPU 4%.
+    - Khi chạy quét (tiến trình scanner `wvsc` và Chromium headless crawl): RAM tăng lên 2.5GB - 3.8GB, CPU chiếm 1.5 - 2 cores.
+    - Docker VM trên máy (WSL2) được phân bổ tối đa 7.46GB RAM.
+- **Chốt cấu hình tài nguyên cho pod giả**:
+  - Acunetix sidecar container: `--memory=4g`, `--cpus=2.0`.
+  - Driver container: `--memory=256m`, `--cpus=0.5`.
+  - Tổng tài nguyên 1 pod giả: ~4.25GB RAM.
+  - **Xác nhận trần đồng thời**: Với hạn mức 7.46GB RAM của Docker VM, **chỉ đủ chạy đúng 1 pod giả tại một thời điểm**. Trần đồng thời = 1 là tuyệt đối bắt buộc để tránh OOM Crash hệ thống.
