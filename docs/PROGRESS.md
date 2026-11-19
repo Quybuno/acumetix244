@@ -642,6 +642,36 @@
     3. Bộ lọc che phủ log: Đảm bảo toàn bộ log in ra console/stream đều được che phủ `[REDACTED]`, không rò rỉ mật khẩu hay token thô.
     4. Trích xuất thô cơ sở dữ liệu sau khi tạo lượt quét: Đối soát 100% bản ghi SQLite xác nhận **ZERO mật khẩu mục tiêu, ZERO token webhook thô, và ZERO giá trị header nhạy cảm** tồn tại trong DB.
 
+### T3.5: Giao diện bộ khởi chạy Job gồm launch, status, kill, cleanup và bản Docker (chọn bản bằng cấu hình)
+- **Đã làm**:
+  - Tạo `backend/services/launcher.py`:
+    - Định nghĩa lớp cơ sở trừu tượng `LauncherInterface` gồm 4 phương thức chuẩn:
+      - `launch(scan_id, secrets, inputs, options) -> dict`
+      - `status(scan_id) -> dict`
+      - `kill(scan_id) -> bool`
+      - `cleanup(scan_id) -> bool`
+    - Cài đặt `DockerLauncher`:
+      - Kết nối trực tiếp với module điều phối `scripts/pod_manager.py` (Giai đoạn 1).
+      - Chuẩn bị tệp bí mật `credentials.json` (chỉ đọc, 0600) và tệp `options.json` cùng các tệp inputs trong thư mục cách ly `tmp/scans/<scan_id>/`.
+      - Khởi chạy nhóm container theo thứ tự nghiêm ngặt: net container -> Acunetix sidecar -> kiểm tra sẵn sàng -> driver container non-root UID 1000.
+      - Hỗ trợ kiểm tra trạng thái (`RUNNING`, `COMPLETED`, `FAILED`, `DEGRADED`), cưỡng chế dừng (`kill`) và dọn sạch (`cleanup`) container và thư mục tạm theo nhãn `scan-id`.
+    - Cài đặt `MockLauncher`: Bộ khởi chạy trong bộ nhớ phục vụ unit test nhanh không cần Docker.
+    - Cài đặt `OpenShiftLauncher`: Bản khung tương thích (Stub) chuẩn bị cho việc triển khai Kubernetes Job / Secret trong tương lai mà không cần thay đổi bất kỳ dòng mã nghiệp vụ nào ở Backend.
+    - Cài đặt `LauncherFactory`: Bộ chọn bản cài đặt theo cấu hình hoặc biến môi trường `LAUNCHER_TYPE` (mặc định `"docker"`).
+  - Viết kịch bản kiểm thử tự động `scripts/test_t35_launcher.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t35_launcher.py` PASS 100% tất cả 6 test suites:
+    1. `LauncherFactory` giải quyết đúng đắn loại launcher theo cấu hình (`docker`, `mock`, `openshift`).
+    2. Cả 3 lớp `DockerLauncher`, `MockLauncher`, `OpenShiftLauncher` tuân thủ 100% hợp đồng giao diện `LauncherInterface`.
+    3. `MockLauncher` hoạt động đầy đủ vòng đời trong bộ nhớ.
+    4. `OpenShiftLauncher` stub thực thi với chữ ký và cấu trúc phản hồi chuẩn hóa.
+    5. `DockerLauncher` thực thi vòng đời pod thực tế trên Docker:
+       - `launch()`: Khởi chạy 3 container (`scan-test-t35-docker-net`, `scan-test-t35-docker-acunetix`, `scan-test-t35-docker-driver`).
+       - `status()`: Phản hồi trạng thái `RUNNING` sau khi khởi chạy, và `COMPLETED` kèm `driver_exit_code: 0`.
+       - `kill()` và `cleanup()`: Dọn sạch hoàn toàn các container và thư mục tạm `tmp/scans/<scan_id>`, xác nhận không còn bất kỳ container hay tệp rác nào tồn đọng.
+    6. Tích hợp `ScanService`: Backend hoạt động trơn tru và giống hệt nhau khi đổi qua lại giữa `MockLauncher`, `DockerLauncher`, và `OpenShiftLauncher`.
+
+
 
 
 
