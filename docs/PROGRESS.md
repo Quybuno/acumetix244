@@ -290,3 +290,18 @@
   - Chạy `python scripts/cleanup.py manual01`:
     - Dọn sạch 100% thư mục tạm `tmp/scans/manual01` trên host.
   - Vòng đời: Dựng -> Chạy -> Driver thoát -> Dọn sạch hoạt động chuẩn xác và trực quan qua dòng lệnh.
+
+## Kiểm tra Cổng sang Giai đoạn 2
+
+**Tiêu chí TASKS.md**: "Chạy tay vài lần liên tiếp không để sót lại container, mạng hay tệp tạm nào."
+
+- **Kịch bản kiểm chứng**: Thực thi `python scripts/verify_gate_phase1.py` chạy tự động 3 chu kỳ pod liên tiếp với các kịch bản thực tế:
+  1. **Lượt 1 (`gate-run-1`)**: Chạy thành công bình thường (driver thoát mã `0`).
+  2. **Lượt 2 (`gate-run-2`)**: Giả lập lỗi thực thi (driver thoát mã `1`).
+  3. **Lượt 3 (`gate-run-3`)**: Lặp lại lượt chạy thành công (driver thoát mã `0`).
+- **Kết quả kiểm tra từng dòng tiêu chuẩn**:
+  - [x] **Container**: Không còn container nào mang nhãn `scan-id` hoặc `managed-by=deepreview-docker-launcher` sau mỗi lượt (`Leak check: 0 containers`).
+  - [x] **Mạng**: Shared network namespace giải phóng sạch sẽ khi container `net` bị hủy, không tạo docker network rác.
+  - [x] **Tệp tạm**: Thư mục `tmp/scans/<mã>` bị xóa sạch 100%, không sót thư mục `secrets`, `inputs`, `logs` nào (`Leak check: 0 temporary scan dirs`).
+  - [x] **Tính ổn định**: 18 container khác trên host không bị ảnh hưởng, máy host phản hồi mượt mà.
+- **Kết luận Cổng 2**: **ĐẠT (PASSED 100%)** - Toàn bộ Giai đoạn 1 đã hoàn thành xuất sắc. Sẵn sàng sang Giai đoạn 2 (Viết Driver).
