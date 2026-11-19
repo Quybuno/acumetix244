@@ -17,6 +17,7 @@
 | T0.11 | Hoàn thành | 2026-11-19 | Xóa và tạo lại instance liên tiếp: xác nhận dữ liệu sạch 100% (0 target, 0 scan) và license tự kích hoạt thành công đúng chuẩn pod giả dùng 1 lần. | Không |
 | T1.1 | Hoàn thành | 2026-11-19 | Thiết lập quy ước tên `scan-<mã>-<vai trò>`, nhãn `scan-id`, `role`, cấu trúc thư mục tạm riêng theo lượt. Kiểm chứng lọc Docker chính xác. | Không |
 | T1.2 | Hoàn thành | 2026-11-19 | Container giữ mạng (`alpine:3.20 sleep infinity` + `--add-host host.docker.internal:host-gateway`). Driver gọi localhost:3443 và webhook host thành công. | Không |
+| T1.3 | Hoàn thành | 2026-11-19 | Khởi động tuần tự Net -> Acunetix -> Probe readiness (nc + curl) với timeout -> Driver. Driver chỉ chạy khi Acunetix trả lời được. | Không |
 
 ## Chi tiết từng task
 
@@ -160,3 +161,16 @@
 - **Kết quả & Bằng chứng**:
   - Từ container Driver gọi `https://localhost:3443/api/v1/info` tới Acunetix thành công qua giao diện loopback nội bộ.
   - Từ container Driver gọi `http://host.docker.internal:9999/webhook` gửi payload webhook về máy host thành công (HTTP 200).
+
+### T1.3: Khởi động pod theo thứ tự và kiểm tra ready trước khi chạy driver
+- **Đã làm**:
+  - Xây dựng hàm `launch_ordered_pod` trong `scripts/pod_manager.py` tuân thủ nghiêm ngặt thứ tự:
+    1. Khởi động container giữ mạng `scan-<mã>-net`.
+    2. Khởi động container Acunetix gắn cờ `--network container:...` và cấp quyền thư mục license.
+    3. Thăm dò readiness (`wait_acunetix_ready`): sử dụng thăm dò nhanh socket TCP port 3443 qua netcat (`nc -z -w 1 127.0.0.1 3443`), sau đó kiểm tra HTTP status code qua `curl -k https://localhost:3443/api/v1/info`. Hạn chờ tối đa (timeout) mặc định 60-90s; nếu quá hạn sẽ hủy pod và báo lỗi `TimeoutError`.
+    4. Chỉ khi Acunetix phản hồi HTTP thành công, container Driver (`scan-<mã>-driver`) mới được khởi chạy.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/pod_manager.py test_t13`:
+    - Acunetix khởi động và được probe thành công sau ~25s.
+    - Container driver được bật lên và cả 3 container (`net`, `acunetix`, `driver`) đều ở trạng thái `running`.
+    - Dọn dẹp sạch sẽ sau kiểm thử.

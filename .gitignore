@@ -5,3 +5,5 @@
 *.dat
 secrets/
 tmp/
+__pycache__/
+*.pyc
