@@ -21,6 +21,7 @@
 | T1.4 | Hoàn thành | 2026-11-19 | Tệp bí mật & tệp nhập gắn chỉ đọc (:ro) cho driver, không truyền qua biến môi trường (kiểm tra inspect không lộ), cô lập hoàn toàn với container khác, xóa sạch khi dọn. | Không |
 | T1.5 | Hoàn thành | 2026-11-19 | Cấu hình giới hạn tài nguyên pod giả (--memory, --cpus theo số đo T0.9), không dùng cờ privileged. Máy host chạy mượt mà không bị nghẽn. | Không |
 | T1.6 | Hoàn thành | 2026-11-19 | Thiết lập cơ chế hạn tối đa của pod giả (Job Timeout). Quá hạn tự động kill toàn bộ pod và đánh dấu lỗi SCAN_TIMEOUT. | Không |
+| T1.7 | Hoàn thành | 2026-11-19 | Lưu log container driver (và acunetix) ra tệp tmp/scans/<mã>/logs/driver.log trước khi dọn. Đọc được nguyên nhân lỗi dù container đã bị xóa. | Không |
 
 ## Chi tiết từng task
 
@@ -219,3 +220,16 @@
     - Hàm giám sát phát hiện quá hạn sau 6.76s, lập tức gửi tín hiệu kill tới toàn bộ nhóm container (`scan-t16timeout-driver`, `scan-t16timeout-acunetix`, `scan-t16timeout-net`).
     - Kiểm tra `docker inspect`: cả 3 container lập tức chuyển sang trạng thái `exited`.
     - Kết quả trả về đúng chuẩn `error: SCAN_TIMEOUT`. Dọn dẹp sạch sẽ sau test.
+
+### T1.7: Lưu log của driver ra tệp trước khi dọn dẹp
+- **Đã làm**:
+  - Xây dựng hàm `save_pod_logs(scan_id)`: tự động xuất luồng output/error của container `driver` (và `acunetix`) ra tệp `tmp/scans/<mã>/logs/driver.log` và `acunetix.log`.
+  - Nâng cấp hàm `cleanup_pod(scan_id, preserve_logs)`:
+    - Khi kết thúc lượt quét hoặc xảy ra sự cố, hàm sẽ trích xuất và bảo toàn log ra đĩa trước khi xóa container.
+    - Xóa các container Docker (`docker rm -f`).
+    - Dọn sạch các thư mục bí mật `secrets/` và `inputs/`, nhưng vẫn giữ lại thư mục `logs/` phục vụ tra cứu.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/pod_manager.py test_t17`:
+    - Giả lập driver gặp lỗi chí mạng `FATAL ERROR: Target connection refused on mock port` và thoát mã lỗi `42`.
+    - Gọi cleanup pod: xác nhận toàn bộ container thuộc pod đã biến mất khỏi Docker (`docker ps -a` trả về 0 container).
+    - Mở tệp log `tmp/scans/t17logsave/logs/driver.log` trên host: log được lưu nguyên vẹn, đọc rõ ràng nguyên nhân lỗi và mã thoát `42` dù container đã bị hủy hoàn toàn.

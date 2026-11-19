@@ -279,15 +279,58 @@ def wait_pod_completion(scan_id: str, timeout_sec: int = 1800, poll_interval: fl
         
         time.sleep(poll_interval)
 
-def cleanup_pod(scan_id: str):
-    """Remove all containers for a scan-id"""
+def save_pod_logs(scan_id: str) -> dict:
+    """
+    Export logs from pod containers (driver and acunetix) to local log files
+    before container removal. Returns dict of saved log file paths.
+    """
+    paths = get_scan_paths(scan_id)
+    paths["logs"].mkdir(parents=True, exist_ok=True)
+    saved_logs = {}
+    
+    for role in ["driver", "acunetix"]:
+        cname = get_container_name(scan_id, role)
+        log_file = paths["logs"] / f"{role}.log"
+        try:
+            res = subprocess.run(
+                ["docker", "logs", cname],
+                capture_output=True,
+                text=True
+            )
+            # Combine stdout and stderr
+            combined = res.stdout + res.stderr
+            log_file.write_text(combined, encoding="utf-8")
+            saved_logs[role] = log_file
+        except Exception:
+            saved_logs[role] = None
+            
+    return saved_logs
+
+def cleanup_pod(scan_id: str, preserve_logs: bool = False):
+    """
+    Remove all containers and temporary directories for a scan-id.
+    If preserve_logs is True, exports container logs to tmp/scans/<scan_id>/logs/
+    before deleting containers, wipes secrets and inputs, and retains log files.
+    If preserve_logs is False, completely wipes everything including logs.
+    """
+    if preserve_logs:
+        save_pod_logs(scan_id)
+
     containers = list_pod_containers(scan_id)
     c_names = [c["name"] for c in containers]
     if c_names:
         subprocess.run(["docker", "rm", "-f"] + c_names, capture_output=True)
+
     paths = get_scan_paths(scan_id)
-    if paths["root"].exists():
-        shutil.rmtree(paths["root"], ignore_errors=True)
+    if preserve_logs:
+        # Strictly wipe secrets and inputs
+        if paths["secrets"].exists():
+            shutil.rmtree(paths["secrets"], ignore_errors=True)
+        if paths["inputs"].exists():
+            shutil.rmtree(paths["inputs"], ignore_errors=True)
+    else:
+        if paths["root"].exists():
+            shutil.rmtree(paths["root"], ignore_errors=True)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test_t13":
@@ -446,3 +489,49 @@ if __name__ == "__main__":
             print("Cleaning up...")
             cleanup_pod(test_id)
             print("Cleaned up. T1.6 verified.")
+
+    elif len(sys.argv) > 1 and sys.argv[1] == "test_t17":
+        test_id = "t17logsave"
+        print(f"Testing saving driver logs before container cleanup for {test_id}...")
+        error_msg = "FATAL ERROR: Target connection refused on mock port"
+        driver_cmd = [
+            "sh", "-c",
+            f"echo 'Driver initializing...'; echo '{error_msg}' >&2; exit 42"
+        ]
+        try:
+            res = launch_ordered_pod(
+                test_id,
+                driver_cmd=driver_cmd,
+                timeout_ready=60
+            )
+            print("Launch result:", res)
+            
+            # Wait for driver exit
+            wait_res = wait_pod_completion(test_id, timeout_sec=15)
+            print("Driver completed:", wait_res)
+            assert wait_res["exit_code"] == 42, f"Expected exit code 42, got {wait_res['exit_code']}"
+            
+            # Cleanup with preserve_logs=True
+            cleanup_pod(test_id, preserve_logs=True)
+            
+            # Verify containers are deleted from Docker
+            containers = list_pod_containers(test_id)
+            assert len(containers) == 0, f"Expected 0 containers remaining, found {len(containers)}"
+            print("Verified: all pod containers deleted from Docker.")
+            
+            # Verify driver log file exists on host and contains error message
+            paths = get_scan_paths(test_id)
+            driver_log_path = paths["logs"] / "driver.log"
+            assert driver_log_path.exists(), f"Log file {driver_log_path} does not exist!"
+            
+            log_content = driver_log_path.read_text(encoding="utf-8")
+            print("Persisted driver log content:")
+            print(log_content.strip())
+            
+            assert error_msg in log_content, f"Expected error message not found in {driver_log_path}"
+            assert "Driver initializing..." in log_content, "Stdout not captured in log"
+            print("T1.7 log persistence and error diagnosis PASSED!")
+        finally:
+            # Full wipe
+            cleanup_pod(test_id, preserve_logs=False)
+            print("Full cleanup completed. T1.7 verified.")
