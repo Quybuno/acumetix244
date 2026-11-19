@@ -454,3 +454,19 @@
       - `GET /api/v1/targets/{target_id}` trả về `HTTP 404 Not Found`.
       - `GET /api/v1/scans/{scan_id}` trả về `HTTP 404 Not Found` (toàn bộ bản ghi phiên quét, dữ liệu phát hiện và tệp nạp liên đới bị xóa sạch tự động theo cascade).
     - Không phát hiện rò rỉ bất kỳ mật khẩu hay token nào trong log/output.
+
+### T2.10: Gửi webhook kèm token, thử lại khi lỗi mạng, thoát mã 50 khi thất bại
+- **Đã làm**:
+  - Xây dựng module `driver/webhook.py` với lớp `WebhookSender`:
+    - Gửi kết quả quét dạng JSON POST tới `webhook_url` kèm token xác thực qua các header `X-Webhook-Token` và `Authorization: Bearer <token>`.
+    - Cơ chế thử lại (retry) khi gặp lỗi mạng hoặc HTTP non-2xx: số lần thử tối đa (`max_retries`, mặc định 3) với độ trễ lũy tiến (`retry_delay * attempt`).
+    - Ghi nhận chi tiết kết quả thử lại và log kích thước payload.
+  - Cập nhật `driver/main.py`:
+    - Định nghĩa mã thoát chuẩn `EXIT_CODE_WEBHOOK_FAILED = 50`.
+    - Thêm tham số `--webhook-retries` và `--webhook-retry-delay`.
+    - Tích hợp Bước 12: gửi `scan_result_payload` về Webhook server. Nếu hết số lần thử lại mà vẫn không thể kết nối, driver chủ động ghi log lỗi chí mạng và kết thúc tiến trình với mã thoát `50` để Reconciler tại Backend nhận diện sự cố `CALLBACK_LOST`.
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t210_webhook.py`:
+    - **Test Case 1 (Gửi thành công)**: Khởi động Mock Webhook Server, driver gửi payload hoàn chỉnh kèm token `X-Webhook-Token`, server nhận và xác thực khớp 100%, driver ghi nhận `HTTP 200` và thoát mã `0`.
+    - **Test Case 2 (Lỗi mạng & Thoát mã 50)**: Trỏ webhook tới cổng không hoạt động, driver thực hiện đúng 3 lần thử lại (`attempt 1/3` -> `attempt 2/3` -> `attempt 3/3`), sau đó thoát chính xác với mã lỗi `50` (`CALLBACK_LOST`).
+    - Quét toàn bộ stdout/stderr/log: Mật khẩu admin và chuỗi `webhook_token` được che chắn an toàn, không có bất kỳ rò rỉ nào.
