@@ -8,6 +8,8 @@ from backend.services.launcher import (
 )
 from backend.services.options_segregator import OptionsSegregator, PRESET_PROFILE_MAP
 
+from backend.services.webhook_service import WebhookService, WebhookError, MAX_WEBHOOK_PAYLOAD_SIZE
+
 __all__ = [
     "ScanService",
     "ConcurrencyLimitError",
@@ -17,5 +19,8 @@ __all__ = [
     "OpenShiftLauncher",
     "LauncherFactory",
     "OptionsSegregator",
-    "PRESET_PROFILE_MAP"
+    "PRESET_PROFILE_MAP",
+    "WebhookService",
+    "WebhookError",
+    "MAX_WEBHOOK_PAYLOAD_SIZE"
 ]

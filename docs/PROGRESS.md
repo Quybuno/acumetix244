@@ -671,6 +671,28 @@
        - `kill()` và `cleanup()`: Dọn sạch hoàn toàn các container và thư mục tạm `tmp/scans/<scan_id>`, xác nhận không còn bất kỳ container hay tệp rác nào tồn đọng.
     6. Tích hợp `ScanService`: Backend hoạt động trơn tru và giống hệt nhau khi đổi qua lại giữa `MockLauncher`, `DockerLauncher`, và `OpenShiftLauncher`.
 
+### T3.6: API nhận webhook (so băm token, chỉ nhận khi lượt đang SCANNING, giới hạn kích thước, idempotency, không ghi log token)
+- **Đã làm**:
+  - Tạo `backend/services/webhook_service.py`:
+    - Giới hạn kích thước payload: `MAX_WEBHOOK_PAYLOAD_SIZE = 50MB` (từ chối với HTTP 413 Payload Too Large nếu vượt quá trần).
+    - Trích xuất token: Hỗ trợ header `X-Webhook-Token` và `Authorization: Bearer <token>`. Thiếu token từ chối ngay với HTTP 401 Unauthorized.
+    - So băm token bảo mật: Truy vấn `token_hash` từ DB và so khớp an toàn thời gian hằng số `hmac.compare_digest(hash(raw_token), expected_hash)`. Token sai bị từ chối với HTTP 403 Forbidden. Tuyệt đối không in raw token ra log.
+    - Kiểm tra trạng thái và Idempotency (xử lý an toàn khi driver gửi lại nhiều lần):
+      - Nếu lượt quét đang ở trạng thái `SCANNING`: Chuyển trạng thái sang `PARSING` (`update_scan_status`), lưu payload kết quả quét (vulnerabilities, statistics, timings) vào bảng `scan_results`.
+      - Nếu lượt quét đã ở trạng thái `PARSING`, `COMPLETED`, hoặc `FAILED`: Xử lý theo cơ chế idempotent, trả về HTTP 200 OK `{"status": "ignored", "message": "Duplicate callback ignored"}`, bảo toàn dữ liệu gốc, không ghi đè hay làm hỏng dữ liệu.
+  - Tạo `backend/api/webhook_handler.py`: REST API Handler cho endpoint `POST /api/v1/webhook`.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t36_webhook_api.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t36_webhook_api.py` PASS 100% tất cả 7 test suites:
+    1. Gửi webhook hợp lệ: Trả về HTTP 200 `accepted`, chuyển trạng thái `SCANNING` -> `PARSING`, lưu đầy đủ dữ liệu vào `scan_results`.
+    2. Idempotency: Gửi lặp lại cùng một webhook -> Trả về HTTP 200 `ignored`, dữ liệu DB giữ nguyên 100%.
+    3. Token sai: Bị từ chối với HTTP 403 Forbidden.
+    4. Thiếu header token: Bị từ chối với HTTP 401 Unauthorized.
+    5. `scan_id` không tồn tại: Bị từ chối với HTTP 404 Not Found.
+    6. Payload vượt kích thước trần: Bị từ chối với HTTP 413 Payload Too Large.
+    7. Quét toàn bộ log trong quá trình nhận webhook: 100% không rò rỉ token thô.
+
+
 
 
 
