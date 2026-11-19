@@ -623,6 +623,26 @@
     6. Tệp tải lên sai định dạng (`.exe`): Bị từ chối với HTTP 400 Bad Request.
     7. Trần đồng thời = 1: Lượt 1 đang chạy, lượt 2 gửi đến bị từ chối ngay lập tức với HTTP 429 `CONCURRENCY_LIMIT_EXCEEDED`; sau khi lượt 1 chuyển `COMPLETED`, lượt 2 được chấp nhận thành công.
 
+### T3.4: Tách ScanOptions thành phần thường (lưu DB) và phần bí mật (chuyển cho bộ khởi chạy rồi bỏ khỏi bộ nhớ)
+- **Đã làm**:
+  - Tạo `backend/services/options_segregator.py`:
+    - Phân tách cấu hình thành 2 phần độc lập:
+      1. `non_secret_config`: Lưu vào bảng `scan_options_configs` (v1.0) và ghi log an toàn. Chỉ chứa: `preset`, `profile`, `login_kind`, `target_username`, `scan_speed`, `limit_crawler_scope`, `crawl_limit`, `excluded_paths`, `scan_timeout_minutes`, `description`, và danh sách tên header `custom_header_names` (đã loại bỏ giá trị).
+      2. `secret_data`: Chuyển cho Launcher để tạo tệp bí mật `credentials.json` cho driver: `target_url`, `webhook_token`, `webhook_url`, `target_credentials` (`username`, `password`), `custom_headers` (đầy đủ giá trị auth token), `admin_password`.
+    - Kiểm soát nghiêm ngặt: Tự động phát hiện và quăng ngoại lệ nếu bất kỳ khóa nhạy cảm nào (`password`, `webhook_token`, `admin_password`, `raw_token`, `api_key`) lọt vào `non_secret_config`.
+    - Phương thức `purge_secrets(secret_data)`: Chủ động ghi đè và dọn sạch các từ điển/danh sách bí mật khỏi bộ nhớ RAM ngay sau khi Launcher hoàn thành tiếp nhận.
+  - Tạo `backend/logging/logger.py`:
+    - Bộ lọc `BackendSecretMaskingFilter` hỗ trợ đăng ký chuỗi nhạy cảm động kết hợp regex bắt mẫu `password=`, `token=`, `secret=` để tự động thay thế bằng `[REDACTED]`.
+  - Cập nhật `backend/services/scan_service.py`: Tích hợp phân tách qua `OptionsSegregator` và đảm bảo dọn sạch bí mật trong khối `finally`.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t34_options_segregation.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t34_options_segregation.py` PASS 100% tất cả 4 test suites:
+    1. Kiểm tra phân tách cấu hình: 100% các trường nhạy cảm được tách sang `secret_data`, `non_secret_config` chỉ giữ tên header và thuộc tính vận hành.
+    2. Hủy bí mật bộ nhớ: `purge_secrets` dọn sạch toàn bộ từ điển secret và các cấu trúc con.
+    3. Bộ lọc che phủ log: Đảm bảo toàn bộ log in ra console/stream đều được che phủ `[REDACTED]`, không rò rỉ mật khẩu hay token thô.
+    4. Trích xuất thô cơ sở dữ liệu sau khi tạo lượt quét: Đối soát 100% bản ghi SQLite xác nhận **ZERO mật khẩu mục tiêu, ZERO token webhook thô, và ZERO giá trị header nhạy cảm** tồn tại trong DB.
+
+
 
 
 

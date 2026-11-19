@@ -20,22 +20,13 @@ from backend.models.scan import (
 )
 from backend.validation.scan_validator import ScanValidator, ValidationError
 from backend.services.launcher import LauncherInterface, MockLauncher
+from backend.services.options_segregator import OptionsSegregator, PRESET_PROFILE_MAP
 
 class ConcurrencyLimitError(Exception):
     def __init__(self, message: str = "Concurrency limit exceeded", status_code: int = 429):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
-
-# Mapping unified presets to engine-appropriate profile names
-PRESET_PROFILE_MAP = {
-    "fast_scan": "fast",
-    "deep_scan": "Full Scan",
-    "crawl_only": "crawl_only",
-    "owasp_top10": "OWASP Top 10",
-    "standard": "standard",
-    "quick": "quick"
-}
 
 class ScanService:
     def __init__(
@@ -87,11 +78,13 @@ class ScanService:
         token_hash = hash_webhook_token(raw_webhook_token)
 
         # Step 4: Segregate ScanOptions into Non-Secret (DB) and Secret (Launcher only)
-        non_secret_config, secret_data = self._segregate_options(
+        webhook_callback_url = f"{self.webhook_base_url}/api/v1/webhook"
+        non_secret_config, secret_data = OptionsSegregator.segregate(
             engine=engine,
             target_str=target_str,
             options=cleaned_options,
-            raw_token=raw_webhook_token
+            raw_webhook_token=raw_webhook_token,
+            webhook_url=webhook_callback_url
         )
 
         # Step 5: Persist initial ScanJob and Non-Secret Options in DB
@@ -126,9 +119,9 @@ class ScanService:
             self.repo.update_scan_status(scan_id, new_status="FAILED", error_code="JOB_LOST")
             raise RuntimeError(f"Launcher failed to dispatch scan {scan_id}: {e}")
         finally:
-            # Explicitly drop references to raw secrets
+            # Explicitly overwrite and purge secrets from memory (Task T3.4)
+            OptionsSegregator.purge_secrets(secret_data)
             del secret_data
-            del raw_webhook_token
 
         # Step 7: Return public response (ZERO secrets or raw tokens in response)
         return {
