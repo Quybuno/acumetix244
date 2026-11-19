@@ -408,3 +408,22 @@
     - **Test Case 1 (Quét thành công)**: Khởi tạo lượt quét với hồ sơ `crawl_only`, driver ghi nhận tiến trình chuyển từ `scheduled` -> `queued` -> `processing` -> `completed` (100%) sau 12.1 giây, thoát mã `0`.
     - **Test Case 2 (Quá trần thời gian & Abort)**: Đặt trần timeout cực ngắn 5s cho lượt quét `Full Scan`. Driver phát hiện quá hạn sau 5.1s, lập tức gửi lệnh abort tới Acunetix (`HTTP 204`), dọn dẹp target và kết thúc chính xác với mã lỗi `14` (`SCAN_TIMEOUT`).
     - Toàn bộ bí mật/mật khẩu không bị rò rỉ trong stdout/stderr/log.
+
+### T2.7: Kiểm tra sau quét: LOGIN_FAILED, MANUAL_INTERVENTION, LOW_COVERAGE
+- **Đã làm**:
+  - Mở rộng lớp `AcunetixClient` trong `driver/client.py`:
+    - `get_scan_statistics(scan_id, scan_session_id)`: gọi `GET /api/v1/scans/{scan_id}/results/{scan_session_id}/statistics` lấy dữ liệu chi tiết thống kê crawl (`locations`, `request_count`) và danh sách sự kiện/thông báo (`messages`).
+    - `check_post_scan_health(scan_id, scan_info, statistics, scan_options, target_config)`: thực hiện kiểm định nghiệp vụ sau quét, đảm bảo trạng thái `Completed` của Acunetix không được coi là thành công nếu vi phạm 1 trong 3 điều kiện:
+      1. `MANUAL_INTERVENTION`: phát hiện khi `manual_intervention=True` trên phiên quét hoặc trong thông báo sự kiện yêu cầu can thiệp thủ công (CAPTCHA, MFA).
+      2. `LOGIN_FAILED`: phát hiện khi cấu hình có đăng nhập (`automatic` hoặc chuỗi `sequence`) nhưng Acunetix ghi nhận lỗi xác thực (`autologin_failed`, `lsr_failed`, thông báo `login failed`, `unable to authenticate`).
+      3. `LOW_COVERAGE`: phát hiện khi số đường dẫn thu thập (`locations`) thấp hơn ngưỡng trần cấu hình (`min_locations`, mặc định 3) hoặc kết nối crawler preflight bị từ chối (`Could not connect to target host`).
+  - Cập nhật `driver/main.py`:
+    - Tích hợp Bước 9 kiểm định sau quét vào luồng chính.
+    - Nếu vi phạm sức khỏe nghiệp vụ, ghi nhận cảnh báo bác bỏ trạng thái Completed của Acunetix và đánh dấu phiên quét chuyển sang `FAILED` kèm mã lỗi tương ứng (`LOGIN_FAILED`, `MANUAL_INTERVENTION`, `LOW_COVERAGE`).
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t27_post_scan_health.py`:
+    - **Test Case 1 (Thực tế CLI với LOW_COVERAGE)**: Quét crawler trên endpoint lỗi kết nối, Acunetix báo `completed` nhưng `locations` = 2 (< 5). Driver phát hiện lỗi kết nối preflight, bác bỏ trạng thái completed và đánh dấu `FAILED` với `error_code='LOW_COVERAGE'`.
+    - **Test Case 2 (LOGIN_FAILED)**: Kiểm định trường hợp có thông báo lỗi đăng nhập (`autologin_failed`), hàm kiểm tra trả về `is_healthy=False`, `error_code='LOGIN_FAILED'`.
+    - **Test Case 3 (MANUAL_INTERVENTION)**: Kiểm định cờ `manual_intervention=True`, hàm kiểm tra trả về `is_healthy=False`, `error_code='MANUAL_INTERVENTION'`.
+    - **Test Case 4 (HEALTHY SCAN)**: Lượt quét có số locations hợp lệ, không có lỗi đăng nhập hay can thiệp người dùng, hàm kiểm tra trả về `is_healthy=True`.
+    - Không phát hiện bất kỳ rò rỉ bí mật nào trong stdout/log.

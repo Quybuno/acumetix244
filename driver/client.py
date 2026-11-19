@@ -1,6 +1,7 @@
 import ssl
 import time
 import json
+import re
 import hashlib
 import logging
 import urllib.request
@@ -550,3 +551,110 @@ class AcunetixClient:
                 return status, scan_info
 
             time.sleep(poll_interval)
+
+    def get_scan_statistics(self, scan_id: str, scan_session_id: str) -> Dict[str, Any]:
+        """
+        Fetch statistics object for a given scan session.
+        GET /api/v1/scans/{scan_id}/results/{scan_session_id}/statistics
+        """
+        status, data = self.request(f"/api/v1/scans/{scan_id}/results/{scan_session_id}/statistics")
+        if status != 200 or not isinstance(data, dict):
+            self.logger.warning(f"Could not retrieve statistics for scan {scan_id} session {scan_session_id}: HTTP {status}")
+            return {}
+        return data
+
+    def check_post_scan_health(
+        self,
+        scan_id: str,
+        scan_info: Dict[str, Any],
+        statistics: Optional[Dict[str, Any]] = None,
+        scan_options: Optional[Dict[str, Any]] = None,
+        target_config: Optional[Dict[str, Any]] = None
+    ) -> Tuple[bool, Optional[str], Dict[str, Any]]:
+        """
+        Perform post-scan health and business integrity validation (Task T2.7):
+        1. Check MANUAL_INTERVENTION:
+           If scan_info.get("manual_intervention") is True or messages indicate human action needed.
+        2. Check LOGIN_FAILED:
+           If login was configured (automatic credentials or LSR sequence) and
+           statistics messages/events indicate authentication failure or preflight connection refusal.
+        3. Check LOW_COVERAGE:
+           If discovered crawler locations is below threshold (default < 3 or min_locations)
+           or crawler could not connect to target.
+
+        Returns (is_healthy, error_code, health_details).
+        If is_healthy is False, error_code is one of:
+          - "MANUAL_INTERVENTION"
+          - "LOGIN_FAILED"
+          - "LOW_COVERAGE"
+        """
+        scan_options = scan_options or {}
+        target_config = target_config or {}
+        stats = statistics or {}
+
+        main_stats = stats.get("scanning_app", {}).get("wvs", {}).get("main", {})
+        web_scan_status = main_stats.get("web_scan_status", {})
+        messages = main_stats.get("messages", [])
+
+        locations = web_scan_status.get("locations", 0)
+        request_count = web_scan_status.get("request_count", 0)
+        manual_int = scan_info.get("manual_intervention", False)
+
+        details = {
+            "locations": locations,
+            "request_count": request_count,
+            "manual_intervention": manual_int,
+            "messages_count": len(messages),
+            "reasons": []
+        }
+
+        # 1. Check MANUAL_INTERVENTION
+        if manual_int:
+            details["reasons"].append("Acunetix scan flagged manual_intervention=True")
+            self.logger.warning(f"Scan {scan_id} failed health check: MANUAL_INTERVENTION detected.")
+            return False, "MANUAL_INTERVENTION", details
+
+        for m in messages:
+            kind = (m.get("kind") or "").lower()
+            data = (m.get("data") or "").lower()
+            if "manual_intervention" in kind or "captcha" in data or "interaction" in data:
+                details["reasons"].append(f"Message indicates human intervention needed: {data or kind}")
+                self.logger.warning(f"Scan {scan_id} failed health check: MANUAL_INTERVENTION detected in messages.")
+                return False, "MANUAL_INTERVENTION", details
+
+        # 2. Check LOGIN_FAILED
+        login_conf = target_config.get("login", {})
+        login_kind = login_conf.get("kind") or "none"
+        login_configured = (
+            login_kind in ["automatic", "sequence"] or
+            bool(scan_options.get("target_credentials"))
+        )
+
+        if login_configured:
+            for m in messages:
+                kind = (m.get("kind") or "").lower()
+                data = (m.get("data") or "").lower()
+                if kind in ["login_failed", "autologin_failed", "lsr_failed", "login_sequence_failed", "login_form_not_found"]:
+                    details["reasons"].append(f"Login failure message (kind='{kind}'): {data}")
+                    self.logger.warning(f"Scan {scan_id} failed health check: LOGIN_FAILED detected (kind='{kind}').")
+                    return False, "LOGIN_FAILED", details
+                if re.search(r"(?i)(login\s+failed|failed\s+to\s+log\s*in|unable\s+to\s+authenticate|invalid\s+credentials|authentication\s+failed)", data):
+                    details["reasons"].append(f"Login failure detected in text: {data}")
+                    self.logger.warning(f"Scan {scan_id} failed health check: LOGIN_FAILED detected in message text.")
+                    return False, "LOGIN_FAILED", details
+
+        # 3. Check LOW_COVERAGE
+        min_locations = scan_options.get("min_locations", 3)
+        connection_failed = any("could not connect" in (m.get("data") or "").lower() for m in messages)
+        if connection_failed:
+            details["reasons"].append("Scanner preflight could not connect to target host")
+            self.logger.warning(f"Scan {scan_id} failed health check: LOW_COVERAGE (preflight connection failed).")
+            return False, "LOW_COVERAGE", details
+
+        if locations < min_locations:
+            details["reasons"].append(f"Discovered locations ({locations}) is below minimum threshold ({min_locations})")
+            self.logger.warning(f"Scan {scan_id} failed health check: LOW_COVERAGE (locations={locations} < {min_locations}).")
+            return False, "LOW_COVERAGE", details
+
+        self.logger.info(f"Scan {scan_id} passed post-scan health check (locations={locations}, requests={request_count}).")
+        return True, None, details

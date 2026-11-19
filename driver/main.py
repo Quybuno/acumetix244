@@ -173,6 +173,32 @@ def main():
 
             logger.info(f"Scan {scan_id} finished polling with status '{final_status}'.")
 
+            # 9. Post-scan Business Health Check (Task T2.7)
+            scan_session_id = (scan_info.get("current_session") or {}).get("scan_session_id")
+            statistics = {}
+            if scan_session_id:
+                statistics = client.get_scan_statistics(scan_id=scan_id, scan_session_id=scan_session_id)
+
+            is_healthy, error_code, health_details = client.check_post_scan_health(
+                scan_id=scan_id,
+                scan_info=scan_info,
+                statistics=statistics,
+                scan_options=config.scan_options,
+                target_config=current_config
+            )
+
+            if not is_healthy:
+                logger.warning(
+                    f"Post-scan verification REJECTED Acunetix 'completed' status! "
+                    f"Scan marked as FAILED with error_code='{error_code}'. "
+                    f"Reasons: {health_details.get('reasons')}"
+                )
+            else:
+                logger.info(
+                    f"Post-scan verification PASSED: Scan completed with adequate coverage "
+                    f"({health_details.get('locations')} locations discovered) and valid authentication."
+                )
+
         except Exception as e:
             logger.error(f"FATAL: Scan execution failed: {e}")
             if target_id and args.clean_target:
