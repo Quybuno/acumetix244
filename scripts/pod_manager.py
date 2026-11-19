@@ -50,6 +50,31 @@ def setup_scan_dirs(scan_id: str) -> dict:
         p.mkdir(parents=True, exist_ok=True)
     return paths
 
+def prepare_scan_files(scan_id: str, secrets: dict = None, inputs: dict = None) -> dict:
+    """
+    Prepare isolated temporary secret and input files for a scan run.
+    Secrets file permissions are set to owner read/write (0600).
+    """
+    paths = setup_scan_dirs(scan_id)
+
+    if secrets:
+        sec_file = paths["secrets"] / "credentials.json"
+        sec_file.write_text(json.dumps(secrets, indent=2), encoding="utf-8")
+        try:
+            os.chmod(sec_file, 0o600)
+        except Exception:
+            pass
+
+    if inputs:
+        for fname, content in inputs.items():
+            inp_file = paths["inputs"] / fname
+            if isinstance(content, bytes):
+                inp_file.write_bytes(content)
+            else:
+                inp_file.write_text(content, encoding="utf-8")
+
+    return paths
+
 def list_pod_containers(scan_id: str) -> list:
     cmd = [
         "docker", "ps", "-a",
@@ -117,15 +142,21 @@ def wait_acunetix_ready(net_container_name: str, timeout_sec: int = 90) -> bool:
 
     return False
 
-def launch_ordered_pod(scan_id: str, driver_cmd: list = None, timeout_ready: int = 60) -> dict:
+def launch_ordered_pod(
+    scan_id: str,
+    driver_cmd: list = None,
+    timeout_ready: int = 60,
+    secrets: dict = None,
+    inputs: dict = None
+) -> dict:
     """
     Launch pod containers in strict order:
     1. Net container
     2. Acunetix container
     3. Wait for readiness
-    4. Driver container (only runs when Acunetix is ready)
+    4. Driver container (only runs when Acunetix is ready, with read-only secrets and inputs mounts)
     """
-    paths = setup_scan_dirs(scan_id)
+    paths = prepare_scan_files(scan_id, secrets=secrets, inputs=inputs)
     net_name = get_container_name(scan_id, "net")
     acx_name = get_container_name(scan_id, "acunetix")
     driver_name = get_container_name(scan_id, "driver")
@@ -160,11 +191,12 @@ def launch_ordered_pod(scan_id: str, driver_cmd: list = None, timeout_ready: int
     # Step 3: Wait for readiness with timeout
     is_ready = wait_acunetix_ready(net_name, timeout_sec=timeout_ready)
     if not is_ready:
-        # cleanup and raise error
         cleanup_pod(scan_id)
         raise TimeoutError(f"Acuentix failed to become ready within {timeout_ready} seconds")
 
     # Step 4: Driver container (only launched when Acunetix is verified ready)
+    # Secrets and inputs mounted strictly read-only (:ro).
+    # NEVER pass secrets via environment variables!
     d_cmd = driver_cmd or ["sh", "-c", "echo 'Driver starting after Acunetix is ready'; sleep 2; exit 0"]
     subprocess.check_call([
         "docker", "run", "-d",
@@ -173,6 +205,8 @@ def launch_ordered_pod(scan_id: str, driver_cmd: list = None, timeout_ready: int
         "--label", "role=driver",
         "--label", "managed-by=deepreview-docker-launcher",
         "--network", f"container:{net_name}",
+        "-v", f"{paths['secrets'].resolve().as_posix()}:/secrets:ro",
+        "-v", f"{paths['inputs'].resolve().as_posix()}:/inputs:ro",
         DUMMY_DRIVER_IMAGE
     ] + d_cmd)
 
@@ -209,3 +243,71 @@ if __name__ == "__main__":
             print("Cleaning up...")
             cleanup_pod(test_id)
             print("Cleaned up. T1.3 verified.")
+
+    elif len(sys.argv) > 1 and sys.argv[1] == "test_t14":
+        test_id = "t14secrets"
+        print(f"Testing secrets and inputs handling for {test_id}...")
+        test_secret = {"api_key": "secret_token_t14_proof", "target": "http://127.0.0.1:3000"}
+        test_input = {"api_spec.json": '{"info": {"title": "Test API"}}'}
+        
+        driver_sh = (
+            "echo '--- READING SECRETS ---'; "
+            "cat /secrets/credentials.json; "
+            "echo '--- READING INPUTS ---'; "
+            "cat /inputs/api_spec.json; "
+            "echo '--- TESTING WRITE PROHIBITION ---'; "
+            "touch /secrets/hacked.txt 2>&1 || echo 'CANNOT_WRITE_RO'; "
+            "sleep 3"
+        )
+        try:
+            res = launch_ordered_pod(
+                test_id,
+                driver_cmd=["sh", "-c", driver_sh],
+                timeout_ready=60,
+                secrets=test_secret,
+                inputs=test_input
+            )
+            print("Launch result:", res)
+            
+            # Inspect all 3 containers
+            for role in ["net", "acunetix", "driver"]:
+                cname = get_container_name(test_id, role)
+                insp = json.loads(subprocess.check_output(["docker", "inspect", cname]))[0]
+                
+                # Check env vars
+                env_list = insp.get("Config", {}).get("Env", [])
+                for env_item in env_list:
+                    assert "secret_token_t14_proof" not in env_item, f"LEAKED in env of {cname}: {env_item}"
+                print(f"Verified {cname}: no secrets in environment variables ({len(env_list)} envs checked)")
+                
+                # Check mounts
+                mounts = insp.get("Mounts", [])
+                mount_dests = {m.get("Destination"): m for m in mounts}
+                if role == "driver":
+                    assert "/secrets" in mount_dests, "Driver missing /secrets mount"
+                    assert "/inputs" in mount_dests, "Driver missing /inputs mount"
+                    assert mount_dests["/secrets"].get("RW") is False, "/secrets is not read-only!"
+                    assert mount_dests["/inputs"].get("RW") is False, "/inputs is not read-only!"
+                    print(f"Verified {cname}: /secrets and /inputs are mounted Read-Only (RW=False)")
+                else:
+                    assert "/secrets" not in mount_dests, f"{cname} must not have /secrets mounted!"
+                    assert "/inputs" not in mount_dests, f"{cname} must not have /inputs mounted!"
+                    print(f"Verified {cname}: strictly isolated (no /secrets or /inputs mounts)")
+
+            # Check driver logs
+            time.sleep(2)
+            d_name = get_container_name(test_id, "driver")
+            d_logs = subprocess.check_output(["docker", "logs", d_name]).decode()
+            print("Driver execution logs:")
+            print(d_logs.strip())
+            assert "secret_token_t14_proof" in d_logs, "Driver failed to read secret"
+            assert "Test API" in d_logs, "Driver failed to read input file"
+            assert "CANNOT_WRITE_RO" in d_logs, "Read-only enforcement failed"
+            print("T1.4 verification assertions PASSED!")
+        finally:
+            print("Cleaning up...")
+            cleanup_pod(test_id)
+            # Verify temporary directory removed
+            paths = get_scan_paths(test_id)
+            assert not paths["root"].exists(), "Root directory not removed during cleanup"
+            print("Temporary secrets and scan directories completely wiped. T1.4 verified.")

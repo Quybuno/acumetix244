@@ -18,6 +18,7 @@
 | T1.1 | Hoàn thành | 2026-11-19 | Thiết lập quy ước tên `scan-<mã>-<vai trò>`, nhãn `scan-id`, `role`, cấu trúc thư mục tạm riêng theo lượt. Kiểm chứng lọc Docker chính xác. | Không |
 | T1.2 | Hoàn thành | 2026-11-19 | Container giữ mạng (`alpine:3.20 sleep infinity` + `--add-host host.docker.internal:host-gateway`). Driver gọi localhost:3443 và webhook host thành công. | Không |
 | T1.3 | Hoàn thành | 2026-11-19 | Khởi động tuần tự Net -> Acunetix -> Probe readiness (nc + curl) với timeout -> Driver. Driver chỉ chạy khi Acunetix trả lời được. | Không |
+| T1.4 | Hoàn thành | 2026-11-19 | Tệp bí mật & tệp nhập gắn chỉ đọc (:ro) cho driver, không truyền qua biến môi trường (kiểm tra inspect không lộ), cô lập hoàn toàn với container khác, xóa sạch khi dọn. | Không |
 
 ## Chi tiết từng task
 
@@ -174,3 +175,17 @@
     - Acunetix khởi động và được probe thành công sau ~25s.
     - Container driver được bật lên và cả 3 container (`net`, `acunetix`, `driver`) đều ở trạng thái `running`.
     - Dọn dẹp sạch sẽ sau kiểm thử.
+
+### T1.4: Tệp bí mật theo lượt và gắn chỉ đọc
+- **Đã làm**:
+  - Xây dựng hàm `prepare_scan_files(scan_id, secrets, inputs)` tạo file `credentials.json` trong `tmp/scans/<mã>/secrets/` (phân quyền chỉ chủ sở hữu đọc `0600`) và các tệp nhập trong `tmp/scans/<mã>/inputs/`.
+  - Cập nhật hàm `launch_ordered_pod`:
+    - Gắn volume chỉ đọc vào driver container: `-v <secrets>:/secrets:ro` và `-v <inputs>:/inputs:ro`.
+    - Tuyệt đối không truyền bí mật hay token qua biến môi trường (`-e`).
+    - Các container `net` và `acunetix` tuyệt đối không được mount thư mục secrets/inputs.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/pod_manager.py test_t14`:
+    - `docker inspect` cả 3 container: biến môi trường `Env` hoàn toàn sạch, không chứa secret.
+    - `scan-<mã>-driver`: `/secrets` và `/inputs` có thuộc tính `RW: false` (Read-Only). Thử ghi file vào `/secrets/hacked.txt` bị hệ điều hành chặn với lỗi `Read-only file system`.
+    - `scan-<mã>-net` và `scan-<mã>-acunetix`: không có mount nào tới `/secrets` hoặc `/inputs`.
+    - Gọi `cleanup_pod`: toàn bộ thư mục tạm và tệp bí mật trên host bị xóa sạch không còn dấu vết.
