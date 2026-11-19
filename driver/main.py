@@ -37,7 +37,8 @@ def parse_args():
     parser.add_argument("--ready-timeout", type=int, default=60, help="Timeout in seconds waiting for Acunetix API readiness")
     parser.add_argument("--scan-timeout", type=int, default=1800, help="Maximum scan duration in seconds before aborting")
     parser.add_argument("--poll-interval", type=float, default=3.0, help="Polling interval in seconds")
-    parser.add_argument("--clean-target", action="store_true", help="Delete target immediately after configuration (for testing/dry-run)")
+    parser.add_argument("--clean-target", action="store_true", default=True, help="Delete target after scan (default: True)")
+    parser.add_argument("--keep-target", action="store_true", help="Keep target on Acunetix after scan (default: False, target is deleted)")
     parser.add_argument("--no-scan", action="store_true", help="Skip scan trigger (dry-run / setup only)")
     return parser.parse_args()
 
@@ -231,17 +232,27 @@ def main():
                 f"vulns={len(vulnerabilities)} locations={health_details.get('locations')}."
             )
 
+            # 11. Cleanup Target & Associated Scan Artifacts (Task T2.9)
+            if not args.keep_target and target_id:
+                logger.info(f"Cleaning up target {target_id} before webhook callback (Task T2.9)...")
+                cleanup_ok = client.delete_target(target_id)
+                if cleanup_ok:
+                    logger.info(f"Target {target_id} and all associated scan data deleted successfully from Acunetix.")
+                    target_id = None
+                else:
+                    logger.warning(f"Failed to cleanly delete target {target_id} from Acunetix.")
+
         except Exception as e:
             logger.error(f"FATAL: Scan execution failed: {e}")
-            if target_id and args.clean_target:
+            if target_id and not args.keep_target:
                 try:
                     client.delete_target(target_id)
                 except Exception:
                     pass
             sys.exit(EXIT_CODE_SCAN_FAILED)
 
-    if args.clean_target and target_id:
-        logger.info(f"Cleaning up target {target_id} (--clean-target set)...")
+    if not args.keep_target and target_id:
+        logger.info(f"Cleaning up target {target_id}...")
         client.delete_target(target_id)
         logger.info("Target cleaned up successfully.")
 

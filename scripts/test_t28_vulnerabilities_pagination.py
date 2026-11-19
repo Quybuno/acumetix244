@@ -69,8 +69,8 @@ def main():
         "--options-file", str(opt_file),
         "--ready-timeout", "10",
         "--scan-timeout", "30",
-        "--poll-interval", "2.0"
-        # intentionally not passing --clean-target yet so we can inspect via API directly
+        "--poll-interval", "2.0",
+        "--keep-target"
     ]
 
     print("Executing driver to run scan and collect results...")

@@ -440,3 +440,17 @@
     - **Test Thuật toán phân trang đa trang**: Giả lập dữ liệu lớn trải dài qua 3 trang con trỏ (`page_0`, `cur_page1`, `cur_page2`), thuật toán duyệt chuẩn xác qua từng con trỏ, thu thập đủ 5/5 lỗ hổng theo đúng thứ tự.
     - Toàn bộ bản ghi lỗ hổng đều chứa đầy đủ các trường cốt lõi: `vuln_id`, `vt_name`, `severity`, `affects_url`, `status`.
     - Không phát hiện bất kỳ mật khẩu hay token nào rò rỉ trong log/output.
+
+### T2.9: Dọn target trước khi gửi webhook
+- **Đã làm**:
+  - Tích hợp Bước 11 trong `driver/main.py`: tự động kích hoạt xóa target (`DELETE /api/v1/targets/{target_id}`) ngay sau khi thu thập xong dữ liệu lỗ hổng & thống kê (`scan_result_payload`) và **trước khi** gửi webhook về Backend.
+  - Cơ chế tự động dọn dẹp theo mặc định (`--clean-target=True`), đồng thời hỗ trợ cờ `--keep-target` dành cho mục đích debug phát triển khi cần thiết.
+  - Đảm bảo việc xóa target không làm ảnh hưởng đến payload kết quả đã được đóng gói an toàn trong bộ nhớ driver.
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t29_target_cleanup.py`:
+    - Driver tổng hợp payload kết quả trước: ghi nhận log `Scan payload compiled`.
+    - Sau đó thực hiện xóa target: ghi nhận log `Cleaning up target <id> before webhook callback` -> `Target <id> and all associated scan data deleted successfully`.
+    - Truy vấn trực tiếp Acunetix REST API:
+      - `GET /api/v1/targets/{target_id}` trả về `HTTP 404 Not Found`.
+      - `GET /api/v1/scans/{scan_id}` trả về `HTTP 404 Not Found` (toàn bộ bản ghi phiên quét, dữ liệu phát hiện và tệp nạp liên đới bị xóa sạch tự động theo cascade).
+    - Không phát hiện rò rỉ bất kỳ mật khẩu hay token nào trong log/output.
