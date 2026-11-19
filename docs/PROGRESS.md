@@ -19,6 +19,7 @@
 | T1.2 | Hoàn thành | 2026-11-19 | Container giữ mạng (`alpine:3.20 sleep infinity` + `--add-host host.docker.internal:host-gateway`). Driver gọi localhost:3443 và webhook host thành công. | Không |
 | T1.3 | Hoàn thành | 2026-11-19 | Khởi động tuần tự Net -> Acunetix -> Probe readiness (nc + curl) với timeout -> Driver. Driver chỉ chạy khi Acunetix trả lời được. | Không |
 | T1.4 | Hoàn thành | 2026-11-19 | Tệp bí mật & tệp nhập gắn chỉ đọc (:ro) cho driver, không truyền qua biến môi trường (kiểm tra inspect không lộ), cô lập hoàn toàn với container khác, xóa sạch khi dọn. | Không |
+| T1.5 | Hoàn thành | 2026-11-19 | Cấu hình giới hạn tài nguyên pod giả (--memory, --cpus theo số đo T0.9), không dùng cờ privileged. Máy host chạy mượt mà không bị nghẽn. | Không |
 
 ## Chi tiết từng task
 
@@ -189,3 +190,17 @@
     - `scan-<mã>-driver`: `/secrets` và `/inputs` có thuộc tính `RW: false` (Read-Only). Thử ghi file vào `/secrets/hacked.txt` bị hệ điều hành chặn với lỗi `Read-only file system`.
     - `scan-<mã>-net` và `scan-<mã>-acunetix`: không có mount nào tới `/secrets` hoặc `/inputs`.
     - Gọi `cleanup_pod`: toàn bộ thư mục tạm và tệp bí mật trên host bị xóa sạch không còn dấu vết.
+
+### T1.5: Giới hạn tài nguyên và chế độ non-privileged
+- **Đã làm**:
+  - Áp dụng thông số tài nguyên đã chốt ở T0.9 vào `launch_ordered_pod`:
+    - `scan-<mã>-net`: `--memory=64m`, `--cpus=0.1`.
+    - `scan-<mã>-acunetix`: `--memory=4g`, `--cpus=2.0`.
+    - `scan-<mã>-driver`: `--memory=256m`, `--cpus=0.5`.
+    - Tuyệt đối không dùng chế độ đặc quyền `--privileged` cho bất kỳ container nào.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/pod_manager.py test_t15`:
+    - `docker inspect` kiểm chứng `HostConfig.Memory`: Net = 64MB (67108864 B), Acunetix = 4GB (4294967296 B), Driver = 256MB (268435456 B).
+    - `HostConfig.NanoCpus`: Net = 0.1 CPU (100000000), Acunetix = 2.0 CPUs (2000000000), Driver = 0.5 CPUs (500000000).
+    - `HostConfig.Privileged`: `False` trên toàn bộ 3 container.
+    - Toàn bộ máy phát triển phản hồi bình thường, không bị chiếm dụng CPU/RAM quá mức.

@@ -168,6 +168,8 @@ def launch_ordered_pod(
         "--label", f"scan-id={scan_id}",
         "--label", "role=net",
         "--label", "managed-by=deepreview-docker-launcher",
+        "--memory=64m",
+        "--cpus=0.1",
         "--add-host", "host.docker.internal:host-gateway",
         NET_IMAGE, "sleep", "infinity"
     ])
@@ -179,6 +181,8 @@ def launch_ordered_pod(
         "--label", f"scan-id={scan_id}",
         "--label", "role=acunetix",
         "--label", "managed-by=deepreview-docker-launcher",
+        "--memory=4g",
+        "--cpus=2.0",
         "--network", f"container:{net_name}",
         ACUNETIX_IMAGE
     ])
@@ -204,6 +208,8 @@ def launch_ordered_pod(
         "--label", f"scan-id={scan_id}",
         "--label", "role=driver",
         "--label", "managed-by=deepreview-docker-launcher",
+        "--memory=256m",
+        "--cpus=0.5",
         "--network", f"container:{net_name}",
         "-v", f"{paths['secrets'].resolve().as_posix()}:/secrets:ro",
         "-v", f"{paths['inputs'].resolve().as_posix()}:/inputs:ro",
@@ -311,3 +317,44 @@ if __name__ == "__main__":
             paths = get_scan_paths(test_id)
             assert not paths["root"].exists(), "Root directory not removed during cleanup"
             print("Temporary secrets and scan directories completely wiped. T1.4 verified.")
+
+    elif len(sys.argv) > 1 and sys.argv[1] == "test_t15":
+        test_id = "t15limits"
+        print(f"Testing resource limits and non-privileged mode for {test_id}...")
+        try:
+            res = launch_ordered_pod(
+                test_id,
+                driver_cmd=["sh", "-c", "echo 'Testing limits'; sleep 2; exit 0"],
+                timeout_ready=60
+            )
+            print("Launch result:", res)
+            
+            expected_limits = {
+                "net": {"mem": 64 * 1024 * 1024, "nano_cpus": 100000000},
+                "acunetix": {"mem": 4 * 1024 * 1024 * 1024, "nano_cpus": 2000000000},
+                "driver": {"mem": 256 * 1024 * 1024, "nano_cpus": 500000000}
+            }
+            
+            for role, exp in expected_limits.items():
+                cname = get_container_name(test_id, role)
+                insp = json.loads(subprocess.check_output(["docker", "inspect", cname]))[0]
+                hcfg = insp.get("HostConfig", {})
+                
+                mem = hcfg.get("Memory")
+                nanocpus = hcfg.get("NanoCpus")
+                priv = hcfg.get("Privileged", False)
+                
+                print(f"Container {cname}:")
+                print(f"  Memory: {mem} bytes (expected {exp['mem']})")
+                print(f"  NanoCpus: {nanocpus} (expected {exp['nano_cpus']})")
+                print(f"  Privileged: {priv} (expected False)")
+                
+                assert mem == exp["mem"], f"Memory limit mismatch for {cname}: got {mem}, expected {exp['mem']}"
+                assert nanocpus == exp["nano_cpus"], f"CPU limit mismatch for {cname}: got {nanocpus}, expected {exp['nano_cpus']}"
+                assert priv is False, f"Privileged mode must be False for {cname}"
+            
+            print("All resource limits and non-privileged checks PASSED for T1.5!")
+        finally:
+            print("Cleaning up...")
+            cleanup_pod(test_id)
+            print("Cleaned up. T1.5 verified.")
