@@ -567,5 +567,37 @@
     5. Lưu trữ kết quả: ghi nhận đầy đủ danh sách lỗ hổng, số lượng theo mức nghiêm trọng, thống kê crawl và bảng timings.
     6. Trích xuất thô (dump) toàn bộ cơ sở dữ liệu: đối soát không có bất kỳ mật khẩu hay token nào xuất hiện trong các bản ghi SQLite.
 
+### T3.2: Lược đồ ScanOptions có phiên bản cho từng engine và API trả lược đồ cho FE
+- **Đã làm**:
+  - Tạo `backend/schemas/scan_options.py`:
+    - Định nghĩa lược đồ biểu mẫu ScanOptions có phiên bản (`version: "1.0"`).
+    - Biểu mẫu Acunetix: Phân tách thành 7 nhóm trường theo logic nghiệp vụ và mockup:
+      1. `target`: URL mục tiêu (bắt buộc, loại `url`), mô tả.
+      2. `preset`: Kiểu quét định sẵn (`fast_scan`, `deep_scan`, `crawl_only`, `owasp_top10`).
+      3. `authentication`: Chế độ đăng nhập (`none`, `automatic`, `sequence`), tên đăng nhập, mật khẩu (`is_secret: True`, ẩn khi nhập), tệp kịch bản `.lsr` (`depends_on`).
+      4. `imports`: Tệp đặc tả API (`.json`, `.yaml`, `.yml`, `.xml`, `.har`).
+      5. `headers`: Danh sách Header bổ sung (`key_value_list`, `is_secret: True`).
+      6. `scope`: Đường dẫn loại trừ (`excluded_paths`).
+      7. `advanced`: Tốc độ quét (`scan_speed`), giới hạn thu thập (`crawl_limit`), thời hạn tối đa (`scan_timeout_minutes`).
+    - Biểu mẫu Fortify: Lược đồ SAST tương thích với mục tiêu là nhánh Git (`git_branch`).
+    - **Ràng buộc an toàn & trừu tượng hóa**: 100% không để lộ các tên trường nội bộ của Acunetix (như `default_scanning_profile_id`, `limit_crawler_scope`, `sensor_secret`, `ssh_credentials`) ra phía Frontend.
+  - Tạo `backend/api/schema_handler.py`:
+    - Endpoint `GET /api/v1/schemas/engines`: Trả về danh sách engine được hỗ trợ (`acunetix`, `fortify`).
+    - Endpoint `GET /api/v1/schemas/scan-options?engine=<engine>`: Trả về chi tiết lược đồ ScanOptions để FE dựng form động.
+    - Xử lý kiểm tra lỗi: Engine không hợp lệ hoặc thiếu tham số trả về HTTP 400 Bad Request rõ ràng.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t32_scan_options_schema.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t32_scan_options_schema.py` PASS 100% tất cả 4 test suites:
+    1. Lược đồ Acunetix: Đủ 7 nhóm trường, ràng buộc kiểu dữ liệu, các preset định sẵn, điều kiện hiển thị (`depends_on`), cờ bảo mật (`is_secret: True`).
+    2. Đối soát tên trường: Kiểm tra danh sách từ khóa nội bộ của Acunetix, xác nhận 0% rò rỉ tên trường Acunetix ra schema.
+    3. Lược đồ Fortify: Tương thích hoàn toàn với nhánh Git.
+    4. HTTP API Server:
+       - `GET /api/v1/schemas/engines` -> `HTTP 200`
+       - `GET /api/v1/schemas/scan-options?engine=acunetix` -> `HTTP 200`
+       - `GET /api/v1/schemas/scan-options?engine=fortify` -> `HTTP 200`
+       - `GET /api/v1/schemas/scan-options?engine=invalid` -> `HTTP 400`
+       - `GET /api/v1/schemas/scan-options` (thiếu engine) -> `HTTP 400`
+
+
 
 
