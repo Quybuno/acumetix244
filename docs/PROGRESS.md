@@ -22,6 +22,7 @@
 | T1.5 | Hoàn thành | 2026-11-19 | Cấu hình giới hạn tài nguyên pod giả (--memory, --cpus theo số đo T0.9), không dùng cờ privileged. Máy host chạy mượt mà không bị nghẽn. | Không |
 | T1.6 | Hoàn thành | 2026-11-19 | Thiết lập cơ chế hạn tối đa của pod giả (Job Timeout). Quá hạn tự động kill toàn bộ pod và đánh dấu lỗi SCAN_TIMEOUT. | Không |
 | T1.7 | Hoàn thành | 2026-11-19 | Lưu log container driver (và acunetix) ra tệp tmp/scans/<mã>/logs/driver.log trước khi dọn. Đọc được nguyên nhân lỗi dù container đã bị xóa. | Không |
+| T1.8 | Hoàn thành | 2026-11-19 | Dọn sạch toàn bộ container, volume, thư mục bí mật và tệp tạm theo nhãn scan-id=<mã>. Không làm ảnh hưởng container khác trên host. | Không |
 
 ## Chi tiết từng task
 
@@ -233,3 +234,19 @@
     - Giả lập driver gặp lỗi chí mạng `FATAL ERROR: Target connection refused on mock port` và thoát mã lỗi `42`.
     - Gọi cleanup pod: xác nhận toàn bộ container thuộc pod đã biến mất khỏi Docker (`docker ps -a` trả về 0 container).
     - Mở tệp log `tmp/scans/t17logsave/logs/driver.log` trên host: log được lưu nguyên vẹn, đọc rõ ràng nguyên nhân lỗi và mã thoát `42` dù container đã bị hủy hoàn toàn.
+
+### T1.8: Dọn sạch tài nguyên theo nhãn scan-id
+- **Đã làm**:
+  - Xây dựng hàm `purge_scan_resources(scan_id)`:
+    - Tìm và xóa toàn bộ container có nhãn `scan-id=<mã>` (`docker rm -f`).
+    - Tìm và xóa volume có nhãn `scan-id=<mã>` (nếu có).
+    - Xóa toàn bộ thư mục tạm `tmp/scans/<mã>/` gồm `secrets/`, `inputs/`, `logs/`.
+    - Tuyệt đối chỉ xóa tài nguyên khớp nhãn của lượt quét, không chạy các lệnh phá hủy diện rộng như `docker system prune` hay xóa volume chung.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/pod_manager.py test_t18`:
+    - Ghi nhận 18 container baseline đang chạy độc lập trên máy host.
+    - Dựng nhóm container pod giả `t18cleanup` (gồm 3 container + thư mục tạm + secret).
+    - Kích hoạt `purge_scan_resources`:
+      - `docker ps -a --filter label=scan-id=t18cleanup` trả về đúng 0 container.
+      - Thư mục `tmp/scans/t18cleanup` biến mất hoàn toàn khỏi đĩa host.
+      - Kiểm tra lại 18 container baseline của host: 100% nguyên vẹn, không có bất kỳ ảnh hưởng nào.

@@ -309,9 +309,11 @@ def save_pod_logs(scan_id: str) -> dict:
 def cleanup_pod(scan_id: str, preserve_logs: bool = False):
     """
     Remove all containers and temporary directories for a scan-id.
-    If preserve_logs is True, exports container logs to tmp/scans/<scan_id>/logs/
-    before deleting containers, wipes secrets and inputs, and retains log files.
-    If preserve_logs is False, completely wipes everything including logs.
+    - Filters and removes ONLY containers with label scan-id=<scan_id>.
+    - Removes any volumes labeled scan-id=<scan_id>.
+    - If preserve_logs is True, exports container logs to tmp/scans/<scan_id>/logs/
+      before deleting containers, wipes secrets and inputs, and retains log files.
+    - If preserve_logs is False, completely wipes everything including logs and root dir.
     """
     if preserve_logs:
         save_pod_logs(scan_id)
@@ -320,6 +322,17 @@ def cleanup_pod(scan_id: str, preserve_logs: bool = False):
     c_names = [c["name"] for c in containers]
     if c_names:
         subprocess.run(["docker", "rm", "-f"] + c_names, capture_output=True)
+
+    # Clean labeled volumes if any
+    try:
+        vols_out = subprocess.check_output([
+            "docker", "volume", "ls", "-q", "--filter", f"label=scan-id={scan_id}"
+        ], stderr=subprocess.DEVNULL).decode().strip()
+        if vols_out:
+            vols = vols_out.splitlines()
+            subprocess.run(["docker", "volume", "rm", "-f"] + vols, capture_output=True)
+    except Exception:
+        pass
 
     paths = get_scan_paths(scan_id)
     if preserve_logs:
@@ -331,6 +344,10 @@ def cleanup_pod(scan_id: str, preserve_logs: bool = False):
     else:
         if paths["root"].exists():
             shutil.rmtree(paths["root"], ignore_errors=True)
+
+def purge_scan_resources(scan_id: str):
+    """Alias for full cleanup removing all containers, volumes, and temporary files"""
+    cleanup_pod(scan_id, preserve_logs=False)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test_t13":
@@ -535,3 +552,57 @@ if __name__ == "__main__":
             # Full wipe
             cleanup_pod(test_id, preserve_logs=False)
             print("Full cleanup completed. T1.7 verified.")
+
+    elif len(sys.argv) > 1 and sys.argv[1] == "test_t18":
+        test_id = "t18cleanup"
+        print(f"Testing label-targeted complete purge for {test_id}...")
+        test_secret = {"api_key": "to_be_purged"}
+        test_input = {"spec.yaml": "openapi: 3.0.0"}
+        
+        # Check baseline existing containers
+        baseline_containers = set(subprocess.check_output(
+            ["docker", "ps", "-a", "--format", "{{.Names}}"]
+        ).decode().splitlines())
+        print(f"Baseline containers on host ({len(baseline_containers)}): {baseline_containers}")
+        
+        try:
+            res = launch_ordered_pod(
+                test_id,
+                driver_cmd=["sh", "-c", "echo 'Driver running'; sleep 2; exit 0"],
+                timeout_ready=60,
+                secrets=test_secret,
+                inputs=test_input
+            )
+            print("Launch result:", res)
+            
+            # Verify 3 containers created
+            active_c = list_pod_containers(test_id)
+            assert len(active_c) == 3, f"Expected 3 containers, got {len(active_c)}"
+            paths = get_scan_paths(test_id)
+            assert paths["root"].exists(), "Root path should exist"
+            assert (paths["secrets"] / "credentials.json").exists(), "Secret file should exist"
+            print("Active pod verified before purge: 3 containers, secrets directory present.")
+            
+            # Perform full cleanup
+            print("Executing purge_scan_resources...")
+            purge_scan_resources(test_id)
+            
+            # 1. Verify 0 containers with label scan-id
+            remaining_c = list_pod_containers(test_id)
+            assert len(remaining_c) == 0, f"Leaked containers found: {remaining_c}"
+            print("Verified: 0 containers remaining with label scan-id.")
+            
+            # 2. Verify temporary files completely wiped
+            assert not paths["root"].exists(), f"Temporary directory still exists: {paths['root']}"
+            print("Verified: temporary root, secrets, inputs, and logs completely wiped.")
+            
+            # 3. Verify other host containers were NOT touched
+            current_containers = set(subprocess.check_output(
+                ["docker", "ps", "-a", "--format", "{{.Names}}"]
+            ).decode().splitlines())
+            for base_c in baseline_containers:
+                assert base_c in current_containers, f"Host container {base_c} was accidentally removed!"
+            print(f"Verified: host baseline containers safely preserved without disruption.")
+            print("T1.8 complete clean verification PASSED!")
+        finally:
+            purge_scan_resources(test_id)
