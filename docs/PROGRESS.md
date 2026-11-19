@@ -936,6 +936,19 @@
     2. CSS Styling: Quy tắc làm mờ hiển thị và `cursor: not-allowed` cho các engine sắp có.
     3. JS Controller: Cấu hình `SCANNER_ENGINES` và giá trị mặc định là `fortify`.
 
+### T4.2: Ô Branch bị vô hiệu hóa khi chọn Acunetix, kèm dòng giải thích
+- **Đã làm**:
+  - Cập nhật `frontend/css/style.css`:
+    - Thêm quy tắc `.form-select:disabled` (nền tối mờ, viền nhạt, `opacity: 0.65`, `cursor: not-allowed`).
+    - Thêm quy tắc `.control-help-text.branch-disabled-note` hiển thị chữ xanh nhạt in nghiêng làm rõ lý do.
+  - Cập nhật `frontend/js/app.js`:
+    - Bổ sung hằng số `BRANCH_EXPLANATIONS` chứa thông điệp: `"Acunetix quét ứng dụng đang chạy qua URL, không đọc mã nguồn trong Git"`.
+    - Cài đặt phương thức `updateBranchState(engineId)` được gọi khi khởi tạo và khi sự kiện `change` trên `#engine-select` xảy ra: tự động khóa `#branch-select` (`disabled = true`, `aria-disabled = "true"`) và hiển thị dòng giải thích khi chọn `acunetix`; mở khóa trở lại khi chuyển về `fortify`.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t42_branch_disable.py` (kiểm tra tĩnh + mô phỏng DOM chạy thực tế qua Node.js `v20.9.0`).
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t42_branch_disable.py` PASS 100% cả 2 phần (Static Assets & Node.js DOM Simulation).
+  - Chạy hồi quy `python scripts/test_t41_engine_select.py` PASS 100%.
+
 
 
 

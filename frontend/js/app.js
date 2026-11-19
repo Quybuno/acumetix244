@@ -40,10 +40,17 @@ const SCANNER_ENGINES = [
     }
 ];
 
+// Explanation texts for Branch field depending on selected engine (Task T4.2)
+const BRANCH_EXPLANATIONS = {
+    fortify: "Nhánh Git chứa mã nguồn để quét SAST",
+    acunetix: "Acunetix quét ứng dụng đang chạy qua URL, không đọc mã nguồn trong Git"
+};
+
 class DeepReviewApp {
     constructor() {
         this.engineSelect = document.getElementById("engine-select");
         this.branchSelect = document.getElementById("branch-select");
+        this.branchExplanation = document.getElementById("branch-explanation");
         this.scanButton = document.getElementById("btn-scan");
         this.currentProject = "proj-banking";
     }
@@ -54,6 +61,7 @@ class DeepReviewApp {
     init() {
         this.initEngineSelector();
         this.bindEvents();
+        this.updateBranchState(this.getSelectedEngine());
     }
 
     /**
@@ -95,8 +103,31 @@ class DeepReviewApp {
     }
 
     onEngineChanged(selectedEngine) {
-        // Will be expanded in Task T4.2 (disabling branch on acunetix)
-        console.log(`[DeepReview] Engine selected: ${selectedEngine}`);
+        this.updateBranchState(selectedEngine);
+    }
+
+    /**
+     * Disable Branch dropdown and show explanation when Acunetix is selected (Task T4.2)
+     */
+    updateBranchState(engineId) {
+        if (!this.branchSelect) return;
+
+        const isAcunetix = engineId === "acunetix";
+        this.branchSelect.disabled = isAcunetix;
+
+        if (isAcunetix) {
+            this.branchSelect.setAttribute("aria-disabled", "true");
+            if (this.branchExplanation) {
+                this.branchExplanation.textContent = BRANCH_EXPLANATIONS.acunetix;
+                this.branchExplanation.classList.add("branch-disabled-note");
+            }
+        } else {
+            this.branchSelect.removeAttribute("aria-disabled");
+            if (this.branchExplanation) {
+                this.branchExplanation.textContent = BRANCH_EXPLANATIONS.fortify;
+                this.branchExplanation.classList.remove("branch-disabled-note");
+            }
+        }
     }
 
     /**
@@ -109,15 +140,18 @@ class DeepReviewApp {
 
 // Instantiate on DOMContentLoaded
 let appInstance = null;
-document.addEventListener("DOMContentLoaded", () => {
-    appInstance = new DeepReviewApp();
-    appInstance.init();
-});
+if (typeof document !== "undefined") {
+    document.addEventListener("DOMContentLoaded", () => {
+        appInstance = new DeepReviewApp();
+        appInstance.init();
+    });
+}
 
 // Export for Node.js / test environments
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         SCANNER_ENGINES,
+        BRANCH_EXPLANATIONS,
         DeepReviewApp
     };
 }

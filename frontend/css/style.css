@@ -188,6 +188,14 @@ body {
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
 
+.form-select:disabled {
+    background-color: rgba(15, 23, 42, 0.45);
+    border-color: rgba(71, 85, 105, 0.5);
+    color: var(--text-muted);
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
 /* Option Coming Soon (Mờ, không chọn được) */
 .option-coming-soon,
 select option:disabled {
@@ -201,6 +209,11 @@ select option:disabled {
     font-size: 11px;
     color: var(--text-muted);
     min-height: 16px;
+}
+
+.control-help-text.branch-disabled-note {
+    color: #38bdf8;
+    font-style: italic;
 }
 
 /* Buttons */
