@@ -25,6 +25,9 @@ ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 
+ROLES = ["net", "acunetix", "driver"]
+REQUIRED_ROLES = ["net", "acunetix", "driver"]
+
 def get_container_name(scan_id: str, role: str) -> str:
     return f"scan-{scan_id}-{role}"
 
@@ -108,6 +111,101 @@ def list_pod_containers(scan_id: str) -> list:
                 "scan_id": labels.get("scan-id", "")
             })
     return containers
+
+def get_pod_status(scan_id: str) -> dict:
+    """
+    Read comprehensive pod status and return JSON structure for BE.
+    Includes:
+      - overall status: "NOT_FOUND" | "STARTING" | "RUNNING" | "COMPLETED" | "FAILED" | "DEGRADED"
+      - driver_exit_code: int | None
+      - missing_containers: list of required roles not present
+      - containers: list of container details with exit_code, state, etc.
+      - error: error code or description if any
+    """
+    containers = list_pod_containers(scan_id)
+    if not containers:
+        return {
+            "scan_id": scan_id,
+            "status": "NOT_FOUND",
+            "driver_exit_code": None,
+            "missing_containers": list(REQUIRED_ROLES),
+            "containers": [],
+            "error": "POD_NOT_FOUND"
+        }
+
+    present_roles = {c["role"]: c for c in containers}
+    missing = [r for r in REQUIRED_ROLES if r not in present_roles]
+
+    detailed_containers = []
+    driver_info = None
+
+    for c in containers:
+        cname = c["name"]
+        role = c["role"]
+        exit_code = None
+        state = c["state"]
+        try:
+            insp = json.loads(subprocess.check_output(
+                ["docker", "inspect", cname],
+                stderr=subprocess.DEVNULL
+            ))[0]
+            state = insp.get("State", {}).get("Status", state)
+            exit_code = insp.get("State", {}).get("ExitCode")
+        except Exception:
+            pass
+
+        # Exit code is only meaningful when the container has exited
+        if state != "exited":
+            exit_code = None
+
+        c_detail = {
+            "name": cname,
+            "role": role,
+            "id": c["id"],
+            "state": state,
+            "status": c["status"],
+            "exit_code": exit_code
+        }
+        detailed_containers.append(c_detail)
+        if role == "driver":
+            driver_info = c_detail
+
+    driver_exit_code = driver_info["exit_code"] if (driver_info and driver_info["state"] == "exited") else None
+
+    if driver_info:
+        if driver_info["state"] == "running":
+            overall_status = "RUNNING"
+            error = None
+        elif driver_info["state"] == "exited":
+            if driver_exit_code == 0:
+                overall_status = "COMPLETED"
+                error = None
+            else:
+                overall_status = "FAILED"
+                error = f"DRIVER_EXIT_{driver_exit_code}"
+        else:
+            overall_status = driver_info["state"].upper()
+            error = f"DRIVER_{overall_status}"
+    else:
+        if any(c["state"] == "running" for c in detailed_containers):
+            overall_status = "STARTING"
+            error = "DRIVER_MISSING" if "driver" in missing else None
+        else:
+            overall_status = "FAILED"
+            error = "CONTAINERS_NOT_RUNNING"
+
+    if missing and overall_status not in ["COMPLETED", "FAILED"]:
+        overall_status = "DEGRADED"
+        error = f"MISSING_ROLES_{','.join(missing)}"
+
+    return {
+        "scan_id": scan_id,
+        "status": overall_status,
+        "driver_exit_code": driver_exit_code,
+        "missing_containers": missing,
+        "containers": detailed_containers,
+        "error": error
+    }
 
 def wait_acunetix_ready(net_container_name: str, timeout_sec: int = 90) -> bool:
     """Fast readiness check: probe port 3443 via net container, then verify HTTP"""
@@ -606,3 +704,56 @@ if __name__ == "__main__":
             print("T1.8 complete clean verification PASSED!")
         finally:
             purge_scan_resources(test_id)
+
+    elif len(sys.argv) > 1 and sys.argv[1] == "test_t19":
+        test_id = "t19status"
+        print(f"Testing pod status JSON reporting for {test_id}...")
+        
+        # 1. Test NOT_FOUND state
+        st_notfound = get_pod_status("nonexistent-test-id")
+        print("Status for nonexistent pod:")
+        print(json.dumps(st_notfound, indent=2))
+        assert st_notfound["status"] == "NOT_FOUND"
+        assert st_notfound["driver_exit_code"] is None
+        assert st_notfound["missing_containers"] == REQUIRED_ROLES
+        print("NOT_FOUND verification PASSED!")
+        
+        try:
+            # 2. Test RUNNING state
+            res = launch_ordered_pod(
+                test_id,
+                driver_cmd=["sh", "-c", "echo 'Driver working...'; sleep 6; exit 0"],
+                timeout_ready=60
+            )
+            st_running = get_pod_status(test_id)
+            print("Status while running:")
+            print(json.dumps(st_running, indent=2))
+            assert st_running["status"] == "RUNNING"
+            assert st_running["driver_exit_code"] is None
+            assert len(st_running["missing_containers"]) == 0
+            assert len(st_running["containers"]) == 3
+            print("RUNNING status verification PASSED!")
+            
+            # 3. Test COMPLETED state after driver finishes
+            print("Waiting for driver to finish...")
+            time.sleep(7)
+            st_completed = get_pod_status(test_id)
+            print("Status after completion:")
+            print(json.dumps(st_completed, indent=2))
+            assert st_completed["status"] == "COMPLETED"
+            assert st_completed["driver_exit_code"] == 0
+            assert len(st_completed["missing_containers"]) == 0
+            print("COMPLETED status verification PASSED!")
+            
+            # 4. Test missing containers detection
+            subprocess.run(["docker", "rm", "-f", get_container_name(test_id, "net")], capture_output=True)
+            st_missing = get_pod_status(test_id)
+            print("Status with missing net container:")
+            print(json.dumps(st_missing, indent=2))
+            assert "net" in st_missing["missing_containers"]
+            print("Missing container detection PASSED!")
+            
+            print("T1.9 pod status JSON reporting verification ALL PASSED!")
+        finally:
+            purge_scan_resources(test_id)
+            print("Cleaned up. T1.9 verified.")

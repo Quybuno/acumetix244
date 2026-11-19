@@ -23,6 +23,7 @@
 | T1.6 | Hoàn thành | 2026-11-19 | Thiết lập cơ chế hạn tối đa của pod giả (Job Timeout). Quá hạn tự động kill toàn bộ pod và đánh dấu lỗi SCAN_TIMEOUT. | Không |
 | T1.7 | Hoàn thành | 2026-11-19 | Lưu log container driver (và acunetix) ra tệp tmp/scans/<mã>/logs/driver.log trước khi dọn. Đọc được nguyên nhân lỗi dù container đã bị xóa. | Không |
 | T1.8 | Hoàn thành | 2026-11-19 | Dọn sạch toàn bộ container, volume, thư mục bí mật và tệp tạm theo nhãn scan-id=<mã>. Không làm ảnh hưởng container khác trên host. | Không |
+| T1.9 | Hoàn thành | 2026-11-19 | Hàm get_pod_status(scan_id) trả về cấu trúc JSON chuẩn: trạng thái pod, mã thoát của driver, danh sách container thiếu. Sẵn sàng cho BE tích hợp. | Không |
 
 ## Chi tiết từng task
 
@@ -250,3 +251,20 @@
       - `docker ps -a --filter label=scan-id=t18cleanup` trả về đúng 0 container.
       - Thư mục `tmp/scans/t18cleanup` biến mất hoàn toàn khỏi đĩa host.
       - Kiểm tra lại 18 container baseline của host: 100% nguyên vẹn, không có bất kỳ ảnh hưởng nào.
+
+### T1.9: Hàm đọc trạng thái nhóm container trả về JSON
+- **Đã làm**:
+  - Xây dựng hàm `get_pod_status(scan_id)` trong `scripts/pod_manager.py` đọc chi tiết trạng thái qua `list_pod_containers` và `docker inspect`:
+    - Trả về đối tượng JSON hoàn chỉnh gồm:
+      - `status`: `NOT_FOUND` | `RUNNING` | `COMPLETED` | `FAILED` | `DEGRADED`.
+      - `driver_exit_code`: `int` khi driver kết thúc, hoặc `None` khi đang chạy / không tồn tại.
+      - `missing_containers`: danh sách các vai trò bắt buộc bị thiếu trong số `['net', 'acunetix', 'driver']`.
+      - `containers`: mảng chi tiết từng container (`name`, `role`, `id`, `state`, `status`, `exit_code`).
+      - `error`: mã lỗi chi tiết nếu có (`DRIVER_EXIT_<code>`, `POD_NOT_FOUND`, `MISSING_ROLES_...`).
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/pod_manager.py test_t19`:
+    - Khi pod không tồn tại: trả về `status: "NOT_FOUND"`, `driver_exit_code: null`, `missing_containers: ["net", "acunetix", "driver"]`.
+    - Khi pod đang chạy: trả về `status: "RUNNING"`, `driver_exit_code: null`, `missing_containers: []`.
+    - Khi driver chạy xong thoát mã 0: trả về `status: "COMPLETED"`, `driver_exit_code: 0`.
+    - Khi xóa cưỡng bức container `net`: hàm lập tức phát hiện và trả về `missing_containers: ["net"]`.
+    - Dữ liệu chuẩn xác 100% để phục vụ BE ở Giai đoạn 3 (giao diện bộ khởi chạy Job và Reconciler).
