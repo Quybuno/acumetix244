@@ -11,6 +11,7 @@
 | T0.5 | Hoàn thành | 2026-11-19 | Trích xuất toàn bộ đặc tả OpenAPI chính thức từ bản dựng Acunetix, thu thập chính xác tên trường các API quét, cấu hình và báo cáo. | Không |
 | T0.6 | Hoàn thành | 2026-11-19 | Lập tài liệu đặc tả chuỗi gọi API và kiểm chứng bằng script tự động hóa chuỗi đầy đủ: Target -> Config -> Scan -> Poll -> Abort -> Delete. | Không |
 | T0.7 | Hoàn thành | 2026-11-19 | Trích xuất JSON mẫu thực tế (34 lỗ hổng web, 8 lỗ hổng API, crawl statistics). Xác nhận KHÔNG CẦN chọn mẫu báo cáo khi lấy qua API. | Không |
+| T0.8 | Hoàn thành | 2026-11-19 | Phân tích chứng chỉ TLS của Acunetix (tự ký bởi Acunetix WVS Root Authority, SAN=DNS:Acunetix). Chốt Driver dùng Insecure TLS trên localhost. | Không |
 
 ## Chi tiết từng task
 
@@ -91,3 +92,12 @@
     - `docs/samples/sample_api_scan_info.json`
     - `docs/samples/sample_api_vulnerabilities.json`
     - `docs/samples/sample_api_statistics.json`
+
+### T0.8: Gọi API qua localhost với chứng chỉ tự ký
+- **Đã làm**:
+  - Phân tích chứng chỉ TLS của máy chủ Acunetix (`/home/acunetix/.acunetix/data/certs/server.cer`).
+  - Chứng chỉ do nội bộ cấp: `Issuer: CN=Acunetix WVS Root Authority`, `Subject: CN=Acunetix`, `SAN: DNS:Acunetix`.
+  - Chứng chỉ không chứa SAN `localhost` hay `127.0.0.1` và không nằm trong CA bundle của hệ điều hành.
+- **Kết luận kiến trúc**:
+  - Driver chạy chung mạng nội bộ loopback của pod giả với Acunetix (`localhost`), kênh truyền khép kín trong namespace mạng riêng của container.
+  - Driver bắt buộc thiết lập cấu hình bỏ qua xác thực TLS CA/hostname (`InsecureSkipVerify: true` hoặc `verify_mode=CERT_NONE`) khi gọi tới `https://localhost:3443/api/v1` để tránh lỗi `SSLCertVerificationError`.
