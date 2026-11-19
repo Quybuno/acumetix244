@@ -21,9 +21,23 @@ from backend.models.scan import (
 from backend.validation.scan_validator import ScanValidator, ValidationError
 from backend.services.launcher import LauncherInterface, MockLauncher
 from backend.services.options_segregator import OptionsSegregator, PRESET_PROFILE_MAP
+from backend.services.state_machine import ScanStateMachine, InvalidStateTransitionError
+from backend.parsers.acunetix_parser import AcunetixReportParser, UnifiedReport
 
 class ConcurrencyLimitError(Exception):
     def __init__(self, message: str = "Concurrency limit exceeded", status_code: int = 429):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+class ScanNotFoundError(Exception):
+    def __init__(self, message: str = "Scan not found", status_code: int = 404):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+class ScanCancellationError(Exception):
+    def __init__(self, message: str = "Cannot cancel scan", status_code: int = 409):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
@@ -34,12 +48,16 @@ class ScanService:
         repo: ScanRepository,
         launcher: Optional[LauncherInterface] = None,
         validator: Optional[ScanValidator] = None,
+        state_machine: Optional[ScanStateMachine] = None,
+        parser: Optional[AcunetixReportParser] = None,
         max_concurrent_scans: int = 1,
         webhook_base_url: str = "http://127.0.0.1:8000"
     ):
         self.repo = repo
         self.launcher = launcher or MockLauncher()
         self.validator = validator or ScanValidator()
+        self.state_machine = state_machine or ScanStateMachine(repo=self.repo)
+        self.parser = parser or AcunetixReportParser()
         self.max_concurrent_scans = max_concurrent_scans
         self.webhook_base_url = webhook_base_url.rstrip("/")
 
@@ -183,3 +201,104 @@ class ScanService:
             secret_data["custom_headers"] = custom_headers
 
         return non_secret_config, secret_data
+
+    def list_scans(
+        self,
+        project_id: Optional[str] = None,
+        engine: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0
+    ) -> Dict[str, Any]:
+        """List scans with filtering and pagination. Strips token_hash and secrets."""
+        total = self.repo.count_scans(project_id=project_id, engine=engine, status=status)
+        scans = self.repo.list_scans(
+            project_id=project_id,
+            engine=engine,
+            status=status,
+            limit=limit,
+            offset=offset
+        )
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "scans": [s.to_public_dict() for s in scans]
+        }
+
+    def get_scan_detail(self, scan_id: str) -> Dict[str, Any]:
+        """Get complete scan details including UnifiedReport results, timings, and coverage warnings."""
+        scan = self.repo.get_scan(scan_id)
+        if not scan:
+            raise ScanNotFoundError(f"Scan '{scan_id}' not found")
+
+        options_cfg = self.repo.get_options_config(scan_id)
+        result_record = self.repo.get_scan_result(scan_id)
+
+        detail = scan.to_public_dict()
+        detail["options"] = options_cfg.config if options_cfg else None
+
+        if result_record:
+            try:
+                report = self.parser.parse(result_record.to_dict(), scan_id=scan_id)
+                detail["report"] = report.to_dict()
+                detail["summary"] = report.summary
+                detail["findings_count"] = report.summary["total_findings"]
+                detail["scan_metrics"] = report.scan_metrics
+                detail["coverage_warnings"] = report.coverage_warnings
+            except Exception:
+                detail["summary"] = {
+                    "total_findings": result_record.vulnerabilities_count,
+                    "severity_breakdown": result_record.severity_counts
+                }
+                detail["findings_count"] = result_record.vulnerabilities_count
+                detail["coverage_warnings"] = result_record.coverage_warnings or []
+                detail["scan_metrics"] = result_record.statistics or {}
+                detail["report"] = None
+            detail["timings"] = result_record.timings
+        else:
+            detail["report"] = None
+            detail["summary"] = None
+            detail["coverage_warnings"] = []
+            detail["scan_metrics"] = None
+            detail["timings"] = None
+
+        return detail
+
+    def cancel_scan(self, scan_id: str) -> Dict[str, Any]:
+        """Cancel an in-progress scan, kill launcher resources, and mark state as CANCELLED_BY_USER."""
+        scan = self.repo.get_scan(scan_id)
+        if not scan:
+            raise ScanNotFoundError(f"Scan '{scan_id}' not found")
+
+        if scan.status in ("COMPLETED", "FAILED"):
+            raise ScanCancellationError(
+                f"Cannot cancel scan '{scan_id}' in terminal state '{scan.status}'"
+            )
+
+        # 1. Instruct launcher to kill and cleanup pod/containers
+        try:
+            self.launcher.kill(scan_id)
+        except Exception:
+            pass
+
+        try:
+            self.launcher.cleanup(scan_id)
+        except Exception:
+            pass
+
+        # 2. Transition scan state to FAILED with CANCELLED_BY_USER
+        updated_scan = self.state_machine.transition(
+            scan_id=scan_id,
+            new_status="FAILED",
+            error_code="CANCELLED_BY_USER"
+        )
+
+        return {
+            "status": "success",
+            "message": "Scan cancelled successfully",
+            "scan_id": scan_id,
+            "state": updated_scan.status,
+            "error_code": updated_scan.error_code,
+            "completed_at": updated_scan.completed_at
+        }

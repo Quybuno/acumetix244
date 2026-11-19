@@ -756,6 +756,36 @@
     5. Cấm đi lùi và nhảy cóc: Chặn `PARSING` $\rightarrow$ `SCANNING` và `SCANNING` $\rightarrow$ `COMPLETED`.
     6. Trần đồng thời = 1 và từ chối ngay lập tức: Khi có scan đang ở `SCANNING` hoặc `PARSING`, yêu cầu tạo mới lập tức bị từ chối với lỗi `ConcurrencyLimitError`; chỉ sau khi scan chuyển sang `COMPLETED` hoặc `FAILED`, scan mới được phép tạo ngay lập tức.
 
+### T3.9: API xem lượt quét (trạng thái, mã lỗi, cảnh báo độ phủ, kết quả theo UnifiedReport) và API hủy lượt quét (kill và cleanup bộ khởi chạy, không rò rỉ token/mật khẩu)
+- **Đã làm**:
+  - Cập nhật `backend/models/scan.py`:
+    - Thêm phương thức `to_public_dict()` trong dataclass `ScanJob` tự động loại bỏ triệt để `token_hash` khỏi các phản hồi API cho người dùng.
+    - Bổ sung các phương thức truy vấn trong `ScanRepository`: `list_scans(...)` hỗ trợ bộ lọc đa tiêu chí (`project_id`, `engine`, `status`) kèm phân trang (`limit`, `offset`) và `count_scans(...)`.
+  - Cập nhật `backend/services/scan_service.py`:
+    - Thêm phương thức `list_scans(...)` trả về danh sách lượt quét đã chuẩn hóa và làm sạch 100% token/bí mật.
+    - Thêm phương thức `get_scan_detail(...)` trả về chi tiết toàn diện của một lượt quét: trạng thái, mã lỗi, thời gian, cấu hình non-secret `options`, cảnh báo độ phủ `coverage_warnings`, số liệu thống kê `scan_metrics`, `timings`, và báo cáo lỗ hổng chuẩn hóa theo `UnifiedReport` qua `AcunetixReportParser`.
+    - Thêm phương thức `cancel_scan(...)`:
+      - Kiểm tra lượt quét tồn tại (ném `ScanNotFoundError` -> 404).
+      - Từ chối hủy lượt quét đã ở trạng thái kết thúc (`COMPLETED` hoặc `FAILED`) với `ScanCancellationError` -> 409 Conflict.
+      - Đối với lượt quét đang chạy (`SCANNING` hoặc `PARSING`): Gọi `launcher.kill()` để dừng pod khẩn cấp, gọi `launcher.cleanup()` để dọn sạch container và tệp bí mật, chuyển trạng thái sang `FAILED` với `error_code="CANCELLED_BY_USER"` qua `ScanStateMachine`, giải phóng ngay lập tức trần đồng thời (active scans = 0).
+  - Cập nhật `backend/api/scan_handler.py`:
+    - Hỗ trợ đầy đủ các phương thức HTTP RESTful: `POST`, `GET`, `DELETE`, `OPTIONS`.
+    - `GET /api/v1/scans`: Xem danh sách lượt quét kèm bộ lọc và phân trang.
+    - `GET /api/v1/scans/{id}`: Xem chi tiết lượt quét (kèm UnifiedReport và cảnh báo độ phủ).
+    - `DELETE /api/v1/scans/{id}`: Hủy lượt quét đang chạy.
+    - Kiểm soát an toàn thông tin: Không một phản hồi nào rò rỉ mật khẩu, token thô, hoặc `token_hash`.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t39_scans_api.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t39_scans_api.py` PASS 100% tất cả 7 khía cạnh kiểm thử:
+    1. `GET /api/v1/scans`: Phân trang (`limit`, `offset`), lọc theo `project_id=proj-alpha`, `engine=fortify`, `status=FAILED`. Quét đệ quy toàn bộ JSON xác nhận **ZERO token_hash, ZERO mật khẩu, ZERO token thô**.
+    2. `GET /api/v1/scans/{id}`: Lượt quét COMPLETED trả về đầy đủ `UnifiedReport` (2 findings, summary CRITICAL=1/HIGH=1, metrics, coverage_warnings `['LOW_COVERAGE']`, timings), options chỉ chứa non-secret và tên header.
+    3. `GET /api/v1/scans/{id}` cho scan đang `SCANNING`: Trả về trạng thái mượt mà, `report=None`, `summary=None`, không bị lỗi.
+    4. `GET /api/v1/scans/{id}` scan không tồn tại: Trả về HTTP 404 Not Found chuẩn xác.
+    5. `DELETE /api/v1/scans/{id}`: Hủy thành công scan đang `SCANNING`, kích hoạt `launcher.kill()` và `launcher.cleanup()`, chuyển trạng thái sang `FAILED` kèm `error_code="CANCELLED_BY_USER"`, giải phóng trần đồng thời về 0.
+    6. `DELETE /api/v1/scans/{id}` trên scan đã `COMPLETED` hoặc `FAILED`: Từ chối dứt khoát với HTTP 409 Conflict.
+    7. `DELETE /api/v1/scans/{id}` scan không tồn tại: Trả về HTTP 404 Not Found chuẩn xác.
+
+
 
 
 

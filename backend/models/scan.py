@@ -79,6 +79,12 @@ class ScanJob:
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
+    def to_public_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary suitable for public API responses (ZERO token_hash or secrets)."""
+        data = asdict(self)
+        data.pop("token_hash", None)
+        return data
+
 @dataclass
 class ScanOptionsConfig:
     scan_id: str
@@ -202,6 +208,83 @@ class ScanRepository:
                 updated_at=row["updated_at"],
                 completed_at=row["completed_at"]
             )
+        finally:
+            if self.db.db_path != ":memory:":
+                conn.close()
+
+    def list_scans(
+        self,
+        project_id: Optional[str] = None,
+        engine: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[ScanJob]:
+        """Query scan jobs with optional filters and pagination."""
+        query = "SELECT * FROM scans WHERE 1=1"
+        params: List[Any] = []
+        if project_id:
+            query += " AND project_id = ?"
+            params.append(project_id)
+        if engine:
+            query += " AND engine = ?"
+            params.append(engine)
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?;"
+        params.extend([max(1, min(limit, 100)), max(0, offset)])
+
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            return [
+                ScanJob(
+                    scan_id=row["scan_id"],
+                    project_id=row["project_id"],
+                    engine=row["engine"],
+                    created_by=row["created_by"],
+                    status=row["status"],
+                    error_code=row["error_code"],
+                    target=row["target"],
+                    token_hash=row["token_hash"],
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                    completed_at=row["completed_at"]
+                )
+                for row in rows
+            ]
+        finally:
+            if self.db.db_path != ":memory:":
+                conn.close()
+
+    def count_scans(
+        self,
+        project_id: Optional[str] = None,
+        engine: Optional[str] = None,
+        status: Optional[str] = None
+    ) -> int:
+        """Count total scans matching filters."""
+        query = "SELECT COUNT(*) FROM scans WHERE 1=1"
+        params: List[Any] = []
+        if project_id:
+            query += " AND project_id = ?"
+            params.append(project_id)
+        if engine:
+            query += " AND engine = ?"
+            params.append(engine)
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, tuple(params))
+            return cursor.fetchone()[0]
         finally:
             if self.db.db_path != ":memory:":
                 conn.close()
