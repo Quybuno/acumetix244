@@ -470,3 +470,27 @@
     - **Test Case 1 (Gửi thành công)**: Khởi động Mock Webhook Server, driver gửi payload hoàn chỉnh kèm token `X-Webhook-Token`, server nhận và xác thực khớp 100%, driver ghi nhận `HTTP 200` và thoát mã `0`.
     - **Test Case 2 (Lỗi mạng & Thoát mã 50)**: Trỏ webhook tới cổng không hoạt động, driver thực hiện đúng 3 lần thử lại (`attempt 1/3` -> `attempt 2/3` -> `attempt 3/3`), sau đó thoát chính xác với mã lỗi `50` (`CALLBACK_LOST`).
     - Quét toàn bộ stdout/stderr/log: Mật khẩu admin và chuỗi `webhook_token` được che chắn an toàn, không có bất kỳ rò rỉ nào.
+
+### T2.11: Bảng mã thoát chuẩn hóa và đồng hồ riêng cho từng bước
+- **Đã làm**:
+  - Xây dựng module `driver/timer.py` với lớp `StepTimer`:
+    - Đo lường chính xác thời gian thực thi của từng bước độc lập trong toàn bộ pipeline driver bằng `time.monotonic()`.
+    - Xuất bảng tóm tắt thời gian thực thi có cấu trúc rõ ràng (`DRIVER EXECUTION TIMING SUMMARY`) khi driver kết thúc (dù thành công hay thất bại).
+    - So sánh tổng thời gian driver với hạn mức trần của pod giả (`Job Timeout`, T1.6, mặc định 1860s) và tính toán khoảng đệm an toàn (`Margin to Job Kill`), đảm bảo driver luôn chủ động kết thúc hoặc báo lỗi trước khi bị hệ thống diệt cưỡng bức.
+    - Đính kèm toàn bộ số liệu thời gian từng bước (`timings`) vào payload gửi về Webhook để lưu trữ và phục vụ phân tích hiệu năng tại Backend.
+  - Chuẩn hóa bảng mã thoát trong `driver/main.py`:
+    - `0`: Thực thi thành công (`EXIT_CODE_SUCCESS`).
+    - `10`: Acunetix API chưa sẵn sàng quá hạn (`EXIT_CODE_ACUNETIX_NOT_READY`).
+    - `11`: Xác thực hoặc đăng nhập thất bại (`EXIT_CODE_AUTH_FAILED`).
+    - `12`: Tạo target hoặc cấu hình ScanOptions thất bại (`EXIT_CODE_CONFIG_FAILED`).
+    - `13`: Nạp tệp nhập (OpenAPI/LSR) thất bại (`EXIT_CODE_IMPORT_FAILED`).
+    - `14`: Quá trần thời gian quét hoặc phiên quét lỗi (`EXIT_CODE_SCAN_TIMEOUT` / `EXIT_CODE_SCAN_FAILED`).
+    - `50`: Gửi webhook thất bại sau toàn bộ số lần thử lại (`EXIT_CODE_WEBHOOK_FAILED`).
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t211_timings_and_exit_codes.py`:
+    - **Test Case 1 (Bảng đồng hồ & So khớp Job Timeout)**: Driver chạy hoàn chỉnh toàn trình trong 11.00s, xuất bảng timing gồm đủ 10 bước độc lập. Đối soát trần Job Timeout (1860s) thấy khoảng đệm an toàn đạt 1849.00s. Webhook payload nhận được chứa đầy đủ trường `timings.steps`.
+    - **Test Case 2 (Kiểm chứng các mã thoát)**: Kiểm thử kích hoạt chủ đích các mã thoát:
+      - Khi Acunetix không sẵn sàng: Thoát chính xác mã `10`.
+      - Khi quét quá hạn (timeout): Thoát chính xác mã `14`.
+      - Khi webhook thất bại hết số lần thử: Thoát chính xác mã `50`.
+    - Quét log: Không có rò rỉ mật khẩu/token.

@@ -17,13 +17,15 @@ from driver.config import load_config
 from driver.logger import setup_logger
 from driver.client import AcunetixClient
 from driver.webhook import WebhookSender
+from driver.timer import StepTimer
 
+EXIT_CODE_SUCCESS = 0
 EXIT_CODE_ACUNETIX_NOT_READY = 10
 EXIT_CODE_AUTH_FAILED = 11
 EXIT_CODE_CONFIG_FAILED = 12
 EXIT_CODE_IMPORT_FAILED = 13
 EXIT_CODE_SCAN_TIMEOUT = 14
-EXIT_CODE_SCAN_FAILED = 15
+EXIT_CODE_SCAN_FAILED = 14
 EXIT_CODE_WEBHOOK_FAILED = 50
 
 def parse_args():
@@ -42,14 +44,17 @@ def parse_args():
     parser.add_argument("--clean-target", action="store_true", default=True, help="Delete target after scan (default: True)")
     parser.add_argument("--keep-target", action="store_true", help="Keep target on Acunetix after scan (default: False, target is deleted)")
     parser.add_argument("--no-scan", action="store_true", help="Skip scan trigger (dry-run / setup only)")
+    parser.add_argument("--job-timeout", type=int, default=1860, help="Maximum Job timeout limit (T1.6) in seconds")
     parser.add_argument("--webhook-retries", type=int, default=3, help="Max retry attempts for webhook delivery")
     parser.add_argument("--webhook-retry-delay", type=float, default=1.0, help="Initial retry delay in seconds")
     return parser.parse_args()
 
 def main():
     args = parse_args()
+    timer = StepTimer(scan_id=args.scan_id)
 
     # 1. Load configuration
+    timer.start_step("1. Load Configuration")
     try:
         config = load_config(
             scan_id=args.scan_id,
@@ -62,6 +67,8 @@ def main():
         )
     except Exception as e:
         sys.stderr.write(f"FATAL: Configuration error: {e}\n")
+        timer.end_step("FAILED", str(e))
+        timer.print_summary(exit_code=1, job_timeout_seconds=args.job_timeout)
         sys.exit(1)
 
     # 2. Setup structured logging with automatic secret scrubbing
@@ -71,6 +78,8 @@ def main():
         log_file=args.log_file,
         secrets_to_mask=secret_strings
     )
+    timer.logger = logger
+    timer.end_step("SUCCESS")
 
     logger.info("Initializing Acunetix Driver framework (Phase 2 - Task T2.1)")
     logger.info("Driver configuration loaded successfully.")
@@ -80,14 +89,19 @@ def main():
     logger.info(f"Active configuration (masked): {json.dumps(masked_config, indent=2)}")
 
     # 4. Wait for Acunetix API readiness (Task T2.2)
+    timer.start_step("2. Wait for API Readiness")
     client = AcunetixClient(base_url=config.acunetix_url, logger=logger)
     if not client.wait_for_ready(timeout_seconds=args.ready_timeout, poll_interval=2.0):
         logger.error(f"FATAL: Acunetix API failed to become ready within {args.ready_timeout}s.")
+        timer.end_step("FAILED", "Readiness check timeout")
+        timer.print_summary(exit_code=EXIT_CODE_ACUNETIX_NOT_READY, job_timeout_seconds=args.job_timeout)
         sys.exit(EXIT_CODE_ACUNETIX_NOT_READY)
 
     logger.info("Acunetix API readiness check passed successfully.")
+    timer.end_step("SUCCESS")
 
     # 5. Initialize instance & obtain API authentication (Task T2.3)
+    timer.start_step("3. API Authentication")
     admin_email, admin_password = config.get_admin_credentials()
     try:
         api_key = client.authenticate(
@@ -95,17 +109,20 @@ def main():
             email=admin_email,
             password=admin_password
         )
-        # Register new api_key in logger mask filter
         for handler in logger.handlers:
             for flt in handler.filters:
                 if hasattr(flt, "add_secrets"):
                     flt.add_secrets([api_key])
         logger.info("Instance authentication verified. Ready to execute target configuration.")
+        timer.end_step("SUCCESS")
     except Exception as e:
         logger.error(f"FATAL: Authentication initialization failed: {e}")
+        timer.end_step("FAILED", str(e))
+        timer.print_summary(exit_code=EXIT_CODE_AUTH_FAILED, job_timeout_seconds=args.job_timeout)
         sys.exit(EXIT_CODE_AUTH_FAILED)
 
     # 6. Create Target & Apply ScanOptions Configuration (Task T2.4)
+    timer.start_step("4. Target Creation & Config")
     target_id = None
     try:
         target_id = client.create_target(
@@ -121,33 +138,41 @@ def main():
             f"Target {target_id} successfully configured according to ScanOptions "
             f"(profile='{config.scan_options.get('profile')}', speed='{current_config.get('scan_speed')}')."
         )
+        timer.end_step("SUCCESS")
     except Exception as e:
         logger.error(f"FATAL: Target creation/configuration failed: {e}")
-        if target_id:
+        if target_id and not args.keep_target:
             try:
                 client.delete_target(target_id)
             except Exception:
                 pass
+        timer.end_step("FAILED", str(e))
+        timer.print_summary(exit_code=EXIT_CODE_CONFIG_FAILED, job_timeout_seconds=args.job_timeout)
         sys.exit(EXIT_CODE_CONFIG_FAILED)
 
     # 7. Import Input Files (OpenAPI definitions, LSR login sequence) (Task T2.5)
     if config.inputs_dir and config.inputs_dir.exists():
+        timer.start_step("5. Import Input Files")
         try:
             imported = client.import_inputs_from_directory(target_id, config.inputs_dir)
             logger.info(f"Successfully processed {len(imported)} input file(s) for target {target_id}.")
+            timer.end_step("SUCCESS")
         except Exception as e:
             logger.error(f"FATAL: Importing input files failed: {e}")
-            if target_id:
+            if target_id and not args.keep_target:
                 try:
                     client.delete_target(target_id)
                 except Exception:
                     pass
+            timer.end_step("FAILED", str(e))
+            timer.print_summary(exit_code=EXIT_CODE_IMPORT_FAILED, job_timeout_seconds=args.job_timeout)
             sys.exit(EXIT_CODE_IMPORT_FAILED)
 
     # 8. Start Scan & Poll Status (Task T2.6)
     scan_id = None
     scan_result_payload = None
     if not args.no_scan:
+        timer.start_step("6. Scan Execution & Polling")
         try:
             profile = config.scan_options.get("profile")
             scan_id = client.start_scan(target_id=target_id, profile_id=profile)
@@ -161,25 +186,31 @@ def main():
 
             if final_status == "timeout":
                 logger.error(f"FATAL: Scan {scan_id} exceeded maximum timeout ({args.scan_timeout}s).")
-                if target_id and args.clean_target:
+                if target_id and not args.keep_target:
                     try:
                         client.delete_target(target_id)
                     except Exception:
                         pass
+                timer.end_step("TIMEOUT", f"Exceeded scan timeout ({args.scan_timeout}s)")
+                timer.print_summary(exit_code=EXIT_CODE_SCAN_TIMEOUT, job_timeout_seconds=args.job_timeout)
                 sys.exit(EXIT_CODE_SCAN_TIMEOUT)
 
             if final_status in ["failed", "abort", "aborted"]:
                 logger.error(f"FATAL: Scan {scan_id} finished with failure status '{final_status}'.")
-                if target_id and args.clean_target:
+                if target_id and not args.keep_target:
                     try:
                         client.delete_target(target_id)
                     except Exception:
                         pass
+                timer.end_step("FAILED", f"Scan terminal status: {final_status}")
+                timer.print_summary(exit_code=EXIT_CODE_SCAN_FAILED, job_timeout_seconds=args.job_timeout)
                 sys.exit(EXIT_CODE_SCAN_FAILED)
 
             logger.info(f"Scan {scan_id} finished polling with status '{final_status}'.")
+            timer.end_step("SUCCESS")
 
             # 9. Post-scan Business Health Check (Task T2.7)
+            timer.start_step("7. Post-scan Health Check")
             scan_session_id = (scan_info.get("current_session") or {}).get("scan_session_id")
             statistics = {}
             if scan_session_id:
@@ -199,13 +230,16 @@ def main():
                     f"Scan marked as FAILED with error_code='{error_code}'. "
                     f"Reasons: {health_details.get('reasons')}"
                 )
+                timer.end_step("WARNING", error_code)
             else:
                 logger.info(
                     f"Post-scan verification PASSED: Scan completed with adequate coverage "
                     f"({health_details.get('locations')} locations discovered) and valid authentication."
                 )
+                timer.end_step("SUCCESS")
 
             # 10. Fetch All Vulnerabilities (with pagination) & Statistics (Task T2.8)
+            timer.start_step("8. Collect Vulnerabilities & Stats")
             vulnerabilities = []
             if scan_session_id:
                 vulnerabilities = client.get_scan_vulnerabilities(
@@ -217,6 +251,7 @@ def main():
                     f"Successfully collected {len(vulnerabilities)} vulnerabilities and scan statistics "
                     f"for scan {scan_id}."
                 )
+            timer.end_step("SUCCESS")
 
             severity_counts = (scan_info.get("current_session") or {}).get("severity_counts") or {}
             scan_result_payload = {
@@ -239,13 +274,16 @@ def main():
 
             # 11. Cleanup Target & Associated Scan Artifacts (Task T2.9)
             if not args.keep_target and target_id:
+                timer.start_step("9. Target Cleanup")
                 logger.info(f"Cleaning up target {target_id} before webhook callback (Task T2.9)...")
                 cleanup_ok = client.delete_target(target_id)
                 if cleanup_ok:
                     logger.info(f"Target {target_id} and all associated scan data deleted successfully from Acunetix.")
                     target_id = None
+                    timer.end_step("SUCCESS")
                 else:
                     logger.warning(f"Failed to cleanly delete target {target_id} from Acunetix.")
+                    timer.end_step("WARNING", "Delete target failed")
 
         except Exception as e:
             logger.error(f"FATAL: Scan execution failed: {e}")
@@ -254,6 +292,8 @@ def main():
                     client.delete_target(target_id)
                 except Exception:
                     pass
+            timer.end_step("FAILED", str(e))
+            timer.print_summary(exit_code=EXIT_CODE_SCAN_FAILED, job_timeout_seconds=args.job_timeout)
             sys.exit(EXIT_CODE_SCAN_FAILED)
 
     if not args.keep_target and target_id:
@@ -265,6 +305,9 @@ def main():
     webhook_url = config.webhook_url or args.webhook_url
     webhook_token = config.get_webhook_token()
     if webhook_url and scan_result_payload:
+        timer.start_step("10. Webhook Dispatch")
+        # Include timing breakdown into payload for reporting
+        scan_result_payload["timings"] = timer.to_dict()
         sender = WebhookSender(
             webhook_url=webhook_url,
             webhook_token=webhook_token,
@@ -278,10 +321,14 @@ def main():
                 f"FATAL: Webhook delivery failed after {args.webhook_retries} retry attempts. "
                 f"Exiting with code 50 (CALLBACK_LOST)."
             )
+            timer.end_step("FAILED", "Delivery retries exhausted")
+            timer.print_summary(exit_code=EXIT_CODE_WEBHOOK_FAILED, job_timeout_seconds=args.job_timeout)
             sys.exit(EXIT_CODE_WEBHOOK_FAILED)
+        timer.end_step("SUCCESS")
     elif not webhook_url:
         logger.info("No webhook_url configured. Scan execution finished without callback.")
 
+    timer.print_summary(exit_code=EXIT_CODE_SUCCESS, job_timeout_seconds=args.job_timeout)
     return 0
 
 if __name__ == "__main__":
