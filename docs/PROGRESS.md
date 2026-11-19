@@ -692,6 +692,40 @@
     6. Payload vượt kích thước trần: Bị từ chối với HTTP 413 Payload Too Large.
     7. Quét toàn bộ log trong quá trình nhận webhook: 100% không rò rỉ token thô.
 
+### T3.7: ReportParser cho Acunetix: đổi JSON mẫu (T0.7) sang UnifiedReport, ánh xạ mức nghiêm trọng, vị trí, mô tả; lỗi phân tích ra mã PARSE_FAILED, không làm sập BE
+- **Đã làm**:
+  - Tạo `backend/parsers/acunetix_parser.py` và `backend/parsers/__init__.py`:
+    - Định nghĩa cấu trúc chuẩn `UnifiedFinding` và `UnifiedReport` dùng chung cho toàn bộ hệ thống Deep Review (cho cả Fortify và Acunetix).
+    - Cài đặt lớp `AcunetixReportParser`:
+      - Phân tích linh hoạt từ chuỗi JSON, bytes, từ điển webhook payload, Acunetix API response, hoặc danh sách vulnerabilities.
+      - Ánh xạ chuẩn hóa mức nghiêm trọng (năm mức): `4`/`"critical"` -> `CRITICAL`, `3`/`"high"` -> `HIGH`, `2`/`"medium"` -> `MEDIUM`, `1`/`"low"` -> `LOW`, `0`/`"info"` -> `INFO`.
+      - Trích xuất tự động và chuẩn hóa:
+        - Tên lỗ hổng (`vt_name` / `name` -> `title`).
+        - Vị trí bị ảnh hưởng (`affects_url` -> `target_url`).
+        - Tham số bị tấn công (`affects_detail` -> `attack_parameter`).
+        - Mã định danh tiêu chuẩn: CWE (`cwe_id` từ tags hoặc trường chuyên biệt), CVE (`cve_id`).
+        - Điểm số và vector CVSS (`cvss_score`, `cvss3`, `cvss4`).
+        - Bằng chứng kỹ thuật: Mô tả (`description`), chi tiết payload PoC (`details`), tác động (`impact`), khuyến nghị khắc phục (`remediation` từ `recommendation`), cặp HTTP Request/Response, và danh sách tài liệu tham khảo (`references`).
+        - Số liệu thống kê lượt quét (`scan_metrics`): số đường dẫn thu thập (`locations_crawled`), số request đã gửi (`requests_sent`), tổng thời gian quét (`duration_seconds`).
+        - Cảnh báo độ phủ (`coverage_warnings`): ghi nhận các cờ cảnh báo rủi ro như `LOW_COVERAGE`, `LOGIN_FAILED`.
+    - Xử lý lỗi phân tích:
+      - Định nghĩa `ParseException` mang thuộc tính `error_code = "PARSE_FAILED"`.
+      - Bắt mọi lỗi định dạng JSON, kiểu dữ liệu sai, thiếu tiêu đề hoặc sai mức nghiêm trọng; quăng `ParseException` có ngữ cảnh cụ thể.
+  - Cập nhật `backend/services/webhook_service.py`:
+    - Tích hợp `AcunetixReportParser` qua phương thức `parse_scan_report(scan_id, raw_payload)`.
+    - Khi gặp lỗi phân tích (`ParseException` hoặc ngoại lệ bất ngờ): Bắt an toàn, cập nhật trạng thái scan trong DB thành `FAILED` với `error_code="PARSE_FAILED"`, ghi log lỗi và tuyệt đối không để xảy ra unhandled exception làm sập tiến trình Backend.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t37_report_parser.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t37_report_parser.py` PASS 100% tất cả 7 khía cạnh kiểm thử:
+    1. Đổi mẫu WebApp T0.7 (`sample_webapp_vulnerabilities.json`, 782 dòng) sang `UnifiedReport`: Phân tích chính xác 34 findings (3 CRITICAL, 14 HIGH, 5 MEDIUM, 3 LOW, 9 INFO); trích xuất đúng SQL Injection (CWE-89, parameter `passw`, target URL) và XSS (CWE-79, parameter `query`).
+    2. Đổi mẫu API T0.7 (`sample_api_vulnerabilities.json`, Swagger Petstore) sang `UnifiedReport`: Phân tích chính xác 8 findings, trích xuất đúng các mã CWE-326, CWE-16, CWE-829, CWE-200.
+    3. Đổi mẫu rỗng T0.7 (`sample_vulnerabilities.json`): Phân tích sạch sẽ 0 findings, tổng hợp các mức độ đều bằng 0.
+    4. Đổi mẫu chi tiết lỗi CRITICAL T0.7 (`sample_vulnerability_detail_critical.json`): Trích xuất đầy đủ 100% thông tin kỹ thuật sâu (CVSS score 10.0, CVSS4 vector, HTTP request raw, remediation có chữ "parameterized queries", 6 tài liệu tham khảo).
+    5. Đổi webhook payload đầy đủ có statistics và timings: Phân tích đúng số đường dẫn thu thập (94 locations), số HTTP request (1420), thời gian quét (185s), và cảnh báo độ phủ `LOW_COVERAGE`.
+    6. Kiểm thử xử lý lỗi dữ liệu hỏng: Payload `None`, chuỗi rỗng, JSON sai cú pháp, kiểu dữ liệu sai, thiếu trường title, mức severity lạ -> 100% đều kích hoạt an toàn `ParseException(error_code='PARSE_FAILED')`.
+    7. Tích hợp với `WebhookService`: Khi nhận payload lỗi, WebhookService tự động chuyển trạng thái scan sang `FAILED` với `error_code="PARSE_FAILED"`, backend không bị sập và tiếp tục phục vụ các lượt quét hợp lệ khác bình thường.
+
+
 
 
 
