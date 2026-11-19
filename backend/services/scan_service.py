@@ -9,8 +9,10 @@ Orchestrates:
 6. DB persistence in 'SCANNING' state.
 """
 
+import os
 import uuid
 import secrets
+import threading
 from typing import Dict, Any, Optional, Tuple, List
 from backend.models.scan import (
     ScanJob,
@@ -50,7 +52,7 @@ class ScanService:
         validator: Optional[ScanValidator] = None,
         state_machine: Optional[ScanStateMachine] = None,
         parser: Optional[AcunetixReportParser] = None,
-        max_concurrent_scans: int = 1,
+        max_concurrent_scans: Optional[int] = None,
         webhook_base_url: str = "http://127.0.0.1:8000"
     ):
         self.repo = repo
@@ -58,8 +60,19 @@ class ScanService:
         self.validator = validator or ScanValidator()
         self.state_machine = state_machine or ScanStateMachine(repo=self.repo)
         self.parser = parser or AcunetixReportParser()
-        self.max_concurrent_scans = max_concurrent_scans
+
+        # Configurable concurrency limit (R-09 / T0.9 default: 1)
+        if max_concurrent_scans is not None:
+            self.max_concurrent_scans = max(1, int(max_concurrent_scans))
+        else:
+            env_val = os.getenv("MAX_CONCURRENT_SCANS", "1")
+            try:
+                self.max_concurrent_scans = max(1, int(env_val))
+            except (ValueError, TypeError):
+                self.max_concurrent_scans = 1
+
         self.webhook_base_url = webhook_base_url.rstrip("/")
+        self._creation_lock = threading.Lock()
 
     def create_scan(
         self,
@@ -82,47 +95,49 @@ class ScanService:
             uploaded_files=uploaded_files
         )
 
-        # Step 2: Enforce concurrency ceiling (T0.9 / T3.11)
-        active_scans = self.repo.count_active_scans()
-        if active_scans >= self.max_concurrent_scans:
-            raise ConcurrencyLimitError(
-                f"Concurrency limit ({self.max_concurrent_scans}) reached. "
-                f"Currently {active_scans} active scan(s) running. New scan request rejected."
+        # Thread-safe atomic concurrency check and scan reservation (Zero Queueing)
+        with self._creation_lock:
+            # Step 2: Enforce concurrency ceiling (T0.9 / T3.11)
+            active_scans = self.repo.count_active_scans()
+            if active_scans >= self.max_concurrent_scans:
+                raise ConcurrencyLimitError(
+                    f"Concurrency limit ({self.max_concurrent_scans}) reached. "
+                    f"Currently {active_scans} active scan(s) running. New scan request rejected."
+                )
+
+            # Step 3: Generate unique Scan ID and Ephemeral Webhook Token
+            scan_id = f"scan-{uuid.uuid4().hex[:12]}"
+            raw_webhook_token = secrets.token_urlsafe(32)
+            token_hash = hash_webhook_token(raw_webhook_token)
+
+            # Step 4: Segregate ScanOptions into Non-Secret (DB) and Secret (Launcher only)
+            webhook_callback_url = f"{self.webhook_base_url}/api/v1/webhook"
+            non_secret_config, secret_data = OptionsSegregator.segregate(
+                engine=engine,
+                target_str=target_str,
+                options=cleaned_options,
+                raw_webhook_token=raw_webhook_token,
+                webhook_url=webhook_callback_url
             )
 
-        # Step 3: Generate unique Scan ID and Ephemeral Webhook Token
-        scan_id = f"scan-{uuid.uuid4().hex[:12]}"
-        raw_webhook_token = secrets.token_urlsafe(32)
-        token_hash = hash_webhook_token(raw_webhook_token)
+            # Step 5: Persist initial ScanJob and Non-Secret Options in DB
+            scan_job = ScanJob(
+                scan_id=scan_id,
+                project_id=project_id,
+                engine=engine,
+                created_by=created_by,
+                status="SCANNING",
+                target=target_str,
+                token_hash=token_hash
+            )
+            self.repo.create_scan(scan_job)
 
-        # Step 4: Segregate ScanOptions into Non-Secret (DB) and Secret (Launcher only)
-        webhook_callback_url = f"{self.webhook_base_url}/api/v1/webhook"
-        non_secret_config, secret_data = OptionsSegregator.segregate(
-            engine=engine,
-            target_str=target_str,
-            options=cleaned_options,
-            raw_webhook_token=raw_webhook_token,
-            webhook_url=webhook_callback_url
-        )
-
-        # Step 5: Persist initial ScanJob and Non-Secret Options in DB
-        scan_job = ScanJob(
-            scan_id=scan_id,
-            project_id=project_id,
-            engine=engine,
-            created_by=created_by,
-            status="SCANNING",
-            target=target_str,
-            token_hash=token_hash
-        )
-        self.repo.create_scan(scan_job)
-
-        options_record = ScanOptionsConfig(
-            scan_id=scan_id,
-            version="1.0",
-            config=non_secret_config
-        )
-        self.repo.save_options_config(options_record)
+            options_record = ScanOptionsConfig(
+                scan_id=scan_id,
+                version="1.0",
+                config=non_secret_config
+            )
+            self.repo.save_options_config(options_record)
 
         # Step 6: Dispatch to Launcher (Secrets passed to launcher and discarded from BE memory)
         try:
@@ -133,8 +148,11 @@ class ScanService:
                 options=non_secret_config
             )
         except Exception as e:
-            # If launch fails, update state to FAILED with JOB_LOST error
-            self.repo.update_scan_status(scan_id, new_status="FAILED", error_code="JOB_LOST")
+            # If launch fails, transition state to FAILED with LAUNCH_FAILED via state machine
+            try:
+                self.state_machine.transition(scan_id=scan_id, new_status="FAILED", error_code="LAUNCH_FAILED")
+            except Exception:
+                self.repo.update_scan_status(scan_id, new_status="FAILED", error_code="LAUNCH_FAILED")
             raise RuntimeError(f"Launcher failed to dispatch scan {scan_id}: {e}")
         finally:
             # Explicitly overwrite and purge secrets from memory (Task T3.4)

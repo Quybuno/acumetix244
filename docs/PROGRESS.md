@@ -813,6 +813,30 @@
     6. Dọn dẹp tài nguyên rác: Tự động phát hiện và xóa sạch container sót lại của các scan đã xong.
     7. Vòng đời luồng nền: `start()` và `stop()` chạy và kết thúc mượt mà trong 2.2 giây.
 
+### T3.11: Trần đồng thời = 1 cấu hình và giải phóng đúng khi kết thúc (COMPLETED, FAILED, Reconciler đóng, người dùng hủy)
+- **Đã làm**:
+  - Cập nhật `backend/services/scan_service.py`:
+    - Cấu hình trần đồng thời linh hoạt: Tham số `max_concurrent_scans` hỗ trợ cấu hình qua mã, qua tham số constructor hoặc qua biến môi trường `MAX_CONCURRENT_SCANS` (mặc định = 1 theo R-09 / T0.9).
+    - **Cơ chế khóa nguyên tử loại bỏ Race Condition (Atomic Concurrency Reservation)**: Tích hợp `threading.Lock()` bảo vệ toàn bộ khối kiểm tra số active scans và ghi nhận trạng thái `SCANNING` vào DB, đảm bảo trong môi trường đa luồng không bao giờ xảy ra race condition vượt trần.
+    - **Từ chối ngay lập tức khi đầy (Zero Queueing, HTTP 429)**: Khi số lượng active scans (`SCANNING` hoặc `PARSING`) đạt trần đồng thời, mọi yêu cầu tạo mới lập tức bị từ chối với lỗi `ConcurrencyLimitError` (HTTP 429 Too Many Requests, `error_code="CONCURRENCY_LIMIT_EXCEEDED"`), kèm thông điệp rõ ràng, không đưa vào hàng đợi chờ ngầm.
+    - **Cơ chế giải phóng đồng thời tin cậy trong 100% kịch bản kết thúc**:
+      1. Kết thúc bình thường (`COMPLETED`): Active scans giảm về 0, mở khóa lượt quét mới ngay lập tức.
+      2. Lỗi phân tích hoặc nghiệp vụ (`FAILED` / `PARSE_FAILED` / `LOGIN_FAILED`): Active scans giảm về 0, mở khóa lượt quét mới ngay lập tức.
+      3. Reconciler đóng lượt quét (`JOB_LOST`, `CALLBACK_LOST`, `SCAN_TIMEOUT`): Active scans giảm về 0, mở khóa lượt quét mới ngay lập tức.
+      4. Người dùng hủy lượt quét qua DELETE API (`CANCELLED_BY_USER`): Active scans giảm về 0, mở khóa lượt quét mới ngay lập tức.
+      5. Launcher khởi chạy thất bại (`LAUNCH_FAILED`): Chuyển trạng thái sang `FAILED` ngay lập tức, không để rò rỉ active count, mở khóa lượt quét mới ngay lập tức.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t311_concurrency_ceiling.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t311_concurrency_ceiling.py` PASS 100% tất cả 7 test suites:
+    1. Cấu hình trần: Kiểm tra mặc định 1, cấu hình tùy biến 3, cấu hình biến môi trường 2 đều chính xác.
+    2. Từ chối ngay khi đầy: Yêu cầu tạo mới khi đang có scan chạy bị từ chối lập tức với HTTP 429 `CONCURRENCY_LIMIT_EXCEEDED`.
+    3. Giải phóng khi `COMPLETED`: Ngay khi scan 1 hoàn tất, scan 2 được chấp thuận ngay lập tức (201 Created).
+    4. Giải phóng khi `FAILED` và người dùng hủy (`CANCELLED_BY_USER`): Scan tiếp theo được tạo thành công ngay lập tức.
+    5. Giải phóng khi Reconciler đóng `JOB_LOST`: Scan tiếp theo được tạo thành công ngay lập tức.
+    6. Giải phóng khi Launcher ném lỗi (`LAUNCH_FAILED`): Scan thất bại được đánh dấu đúng và giải phóng trần ngay, hệ thống tự phục hồi cho scan kế tiếp.
+    7. Thử nghiệm Race Condition đa luồng với 20 luồng đồng thời: **ĐÚNG DUY NHẤT 1 luồng thành công (201 Created), ĐÚNG 19 luồng còn lại bị từ chối dứt khoát với HTTP 429**, số lượng active scans trong DB không bao giờ vượt quá 1.
+
+
 
 
 
