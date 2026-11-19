@@ -15,6 +15,7 @@
 | T0.9 | Hoàn thành | 2026-11-19 | Đo RAM, CPU, ổ đĩa khi chạy Acunetix. Chốt giới hạn tài nguyên pod giả và xác nhận trần đồng thời bằng 1. | Không |
 | T0.10 | Hoàn thành | 2026-11-19 | Khởi động OWASP Juice Shop làm đích thử cục bộ trên port 3000 (có đăng nhập, API REST, đường dẫn đăng xuất /#/logout). | Không |
 | T0.11 | Hoàn thành | 2026-11-19 | Xóa và tạo lại instance liên tiếp: xác nhận dữ liệu sạch 100% (0 target, 0 scan) và license tự kích hoạt thành công đúng chuẩn pod giả dùng 1 lần. | Không |
+| T1.1 | Hoàn thành | 2026-11-19 | Thiết lập quy ước tên `scan-<mã>-<vai trò>`, nhãn `scan-id`, `role`, cấu trúc thư mục tạm riêng theo lượt. Kiểm chứng lọc Docker chính xác. | Không |
 
 ## Chi tiết từng task
 
@@ -137,3 +138,13 @@
     7. Dọn dẹp container 2.
 - **Kết quả & Bằng chứng**:
   - Script chạy thành công (`verify_ephemeral.py` PASS toàn bộ assertions). Đảm bảo tính chất ephemeral (dùng một lần rồi vứt bỏ) hoàn hảo cho thiết kế pod giả mỗi lượt quét.
+
+### T1.1: Quy ước tên và nhãn container, thư mục tạm theo lượt
+- **Đã làm**:
+  - Xây dựng module điều phối `scripts/pod_manager.py` chuẩn hóa quy ước:
+    - Tên container: `scan-<mã>-<vai trò>` (với các vai trò: `net`, `acunetix`, `driver`).
+    - Nhãn Docker: `scan-id=<mã>`, `role=<vai trò>`, `managed-by=deepreview-docker-launcher`.
+    - Thư mục làm việc cách ly theo từng lượt quét: `tmp/scans/<mã>/` gồm các thư mục con `secrets/`, `inputs/`, `logs/`.
+  - Hàm `list_pod_containers(scan_id)` lọc toàn bộ các container của một lượt quét bằng filter `label=scan-id=<mã>`.
+- **Kết quả & Bằng chứng**:
+  - Đã chạy thử nghiệm tạo 2 container gắn nhãn và xác minh hàm `list_pod_containers` nhận diện chính xác 100% qua lệnh `docker ps -a --filter label=scan-id=...`.
