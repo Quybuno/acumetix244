@@ -5,12 +5,31 @@ import hashlib
 import logging
 import urllib.request
 import urllib.error
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
+
+PROFILES = {
+    "full": "11111111-1111-1111-1111-111111111111",
+    "full_scan": "11111111-1111-1111-1111-111111111111",
+    "high_risk": "11111111-1111-1111-1111-111111111112",
+    "critical": "11111111-1111-1111-1111-111111111112",
+    "crawl_only": "11111111-1111-1111-1111-111111111117",
+    "sqli": "11111111-1111-1111-1111-111111111113",
+    "xss": "11111111-1111-1111-1111-111111111116",
+    "owasp_top_10": "11111111-1111-1111-1111-111111111129",
+}
+
+def resolve_profile_id(profile_name: Optional[str]) -> str:
+    if not profile_name:
+        return PROFILES["full"]
+    if len(profile_name) == 36 and "-" in profile_name:
+        return profile_name
+    normalized = profile_name.lower().replace(" ", "_")
+    return PROFILES.get(normalized, PROFILES["full"])
 
 class AcunetixClient:
     """
     HTTP Client for Acunetix REST & GraphQL APIs running in loopback / shared pod network.
-    Handles Insecure TLS (T0.8) and Authentication (T0.2 - T0.4).
+    Handles Insecure TLS (T0.8), Authentication (T0.2 - T0.4), and Target Configuration (T2.4).
     """
     def __init__(
         self,
@@ -200,7 +219,6 @@ class AcunetixClient:
         """
         Authenticate with Acunetix instance using either provided API key or admin login.
         """
-        # Option A: API key is directly provided
         if api_key:
             self.logger.info("Validating provided API key against Acunetix API...")
             self.api_key = api_key
@@ -209,13 +227,111 @@ class AcunetixClient:
                 return self.api_key
             self.logger.warning("Provided API key failed authentication check. Falling back to admin login if available...")
 
-        # Option B: Fallback to admin login + GraphQL key generation
         admin_pass = password or "Acunetix@123"
         self.api_key = self.login_and_generate_api_key(email=email, password=admin_pass)
         
-        # Verify generated key
         if not self.check_auth():
             raise ValueError("Generated API key failed validation check on /api/v1/targets")
 
         self.logger.info("Acunetix API authentication verified successfully.")
         return self.api_key
+
+    def create_target(self, address: str, description: str, criticality: int = 10) -> str:
+        """
+        Create a new target in Acunetix. (Step 2 in API Sequence).
+        Returns target_id.
+        """
+        payload = {
+            "address": address,
+            "description": description,
+            "type": "default",
+            "criticality": criticality
+        }
+        status, resp = self.request("/api/v1/targets", method="POST", data=payload)
+        if status != 201 or not isinstance(resp, dict) or "target_id" not in resp:
+            raise ValueError(f"Failed to create target: HTTP {status}, response: {resp}")
+        target_id = resp["target_id"]
+        self.logger.info(f"Target created successfully: target_id={target_id} address='{address}'")
+        return target_id
+
+    def configure_target(
+        self,
+        target_id: str,
+        scan_options: Dict[str, Any],
+        secrets: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Configure target settings: speed, scope, excluded paths, custom headers, login credentials.
+        (Step 3 in API Sequence).
+        Returns the patched configuration verified from the server.
+        """
+        # Format custom headers
+        headers_list = []
+        raw_headers = secrets.get("custom_headers") or scan_options.get("custom_headers", [])
+        if isinstance(raw_headers, list):
+            for h in raw_headers:
+                if isinstance(h, dict) and "name" in h and "value" in h:
+                    headers_list.append(f"{h['name']}: {h['value']}")
+                elif isinstance(h, str) and ":" in h:
+                    headers_list.append(h)
+
+        # Format login credentials
+        login_cfg = {"kind": "none"}
+        target_creds = secrets.get("target_credentials")
+        if target_creds and isinstance(target_creds, dict) and target_creds.get("username"):
+            login_cfg = {
+                "kind": "automatic",
+                "credentials": {
+                    "enabled": True,
+                    "username": target_creds["username"],
+                    "password": target_creds.get("password", "")
+                }
+            }
+
+        # Excluded paths
+        excluded_paths = scan_options.get("excluded_paths", [])
+
+        # Crawler limits & speed
+        scan_speed = scan_options.get("scan_speed", "fast")
+        limit_crawler_scope = scan_options.get("limit_crawler_scope", True)
+        user_agent = scan_options.get("user_agent", "Mozilla/5.0 DeepReview-AcunetixDriver/1.0")
+
+        config_payload = {
+            "scan_speed": scan_speed,
+            "limit_crawler_scope": limit_crawler_scope,
+            "user_agent": user_agent,
+            "excluded_paths": excluded_paths,
+            "login": login_cfg,
+            "custom_headers": headers_list
+        }
+
+        # Profile ID
+        profile_name = scan_options.get("profile")
+        if profile_name:
+            config_payload["default_scanning_profile_id"] = resolve_profile_id(profile_name)
+
+        self.logger.info(f"Patching configuration for target_id={target_id}...")
+        status, resp = self.request(f"/api/v1/targets/{target_id}/configuration", method="PATCH", data=config_payload)
+        if status != 204:
+            raise ValueError(f"Failed to patch configuration for target {target_id}: HTTP {status}, response: {resp}")
+
+        # Fetch and verify configuration from Acunetix
+        status, current_config = self.request(f"/api/v1/targets/{target_id}/configuration", method="GET")
+        if status != 200 or not isinstance(current_config, dict):
+            raise ValueError(f"Failed to verify configuration for target {target_id}: HTTP {status}")
+
+        self.logger.info(
+            f"Target {target_id} configuration verified: speed='{current_config.get('scan_speed')}' "
+            f"excluded_paths={len(current_config.get('excluded_paths', []))} "
+            f"headers={len(current_config.get('custom_headers', []))} "
+            f"login_kind='{current_config.get('login', {}).get('kind')}'"
+        )
+        return current_config
+
+    def delete_target(self, target_id: str) -> bool:
+        """
+        Delete target from Acunetix instance.
+        """
+        self.logger.info(f"Deleting target {target_id}...")
+        status, _ = self.request(f"/api/v1/targets/{target_id}", method="DELETE")
+        return status in [200, 204]

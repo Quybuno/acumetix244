@@ -28,6 +28,7 @@
 | T2.1 | Hoàn thành | 2026-11-19 | Dựng khung dự án driver (driver/): đọc cấu hình/secrets, ghi log có cấu trúc gắn scan_id, che phủ 100% bí mật (SecretMaskingFilter & mask_data). | Không |
 | T2.2 | Hoàn thành | 2026-11-19 | Chờ API Acunetix sẵn sàng bằng thăm dò lặp lại có hạn chờ (Insecure TLS). Quá hạn thoát mã lỗi 10 (ACUNETIX_NOT_READY), không treo. | Không |
 | T2.3 | Hoàn thành | 2026-11-19 | Khởi tạo xác thực API (hỗ trợ cả API key trực tiếp và tạo key động qua Login SHA-256 + GraphQL generateApiKey). Gọi API kiểm tra GET /api/v1/targets thành công. | Không |
+| T2.4 | Hoàn thành | 2026-11-19 | Tạo target (POST /api/v1/targets) và cấu hình ScanOptions (PATCH configuration: profile, speed, crawl scope, excluded paths, headers, login). Xác nhận khớp 100% qua API. | Không |
 
 ## Chi tiết từng task
 
@@ -347,3 +348,28 @@
     - **Test 1 (Đăng nhập động + GraphQL)**: Đăng nhập với tài khoản `admin@acunetix.com` / `Acunetix@123`, nhận session token, gọi GraphQL sinh API key và xác thực `GET /api/v1/targets` thành công (HTTP 200, thoát mã 0).
     - **Test 2 (Dùng API key có sẵn)**: Xác thực trực tiếp qua header `X-Auth: <api_key>` thành công (HTTP 200, thoát mã 0).
     - **Test 3 (Bắt lỗi đăng nhập sai)**: Thử đăng nhập với mật khẩu sai, bắt đúng lỗi `401 Unauthorized` từ API Acunetix và thoát với mã lỗi `11` mà không rò rỉ mật khẩu vào log.
+
+### T2.4: Tạo target và đặt cấu hình theo ScanOptions
+- **Đã làm**:
+  - Mở rộng lớp `AcunetixClient` trong `driver/client.py`:
+    - Phương thức `create_target(address, description)`: gửi yêu cầu `POST /api/v1/targets` tạo target quét mới, trả về `target_id`.
+    - Phương thức `configure_target(target_id, scan_options, secrets)`: gửi `PATCH /api/v1/targets/{target_id}/configuration` đặt các tham số quét theo ScanOptions:
+      - `scan_speed`: tốc độ quét (`fast`).
+      - `limit_crawler_scope`: giới hạn phạm vi crawl trong subdomain đích (`true`).
+      - `default_scanning_profile_id`: ánh xạ preset hồ sơ quét (Full Scan -> `11111111-1111-1111-1111-111111111111`).
+      - `excluded_paths`: mảng đường dẫn loại trừ (`/#/logout`, `/rest/user/logout`, `/assets/`).
+      - `custom_headers`: mảng header tùy chỉnh dạng chuỗi `Header: Value`.
+      - `login`: chế độ form đăng nhập tự động (`kind: "automatic"` kèm tài khoản và mật khẩu).
+    - Phương thức `delete_target(target_id)`: xóa target qua `DELETE /api/v1/targets/{target_id}`.
+  - Cập nhật `driver/main.py`: tích hợp bước tạo và cấu hình target vào luồng chính, bắt lỗi và thoát mã `12` (`EXIT_CODE_CONFIG_FAILED`) nếu cấu hình thất bại, đồng thời hỗ trợ cờ `--clean-target` cho kịch bản chạy thử nghiệm.
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t24_target_config.py`:
+    - Driver tạo target thành công với `target_id = 87a57ff8-b68e-410e-94f9-f4dfb6f7e97c`.
+    - Gọi trực tiếp `GET /api/v1/targets/{target_id}/configuration` đối soát:
+      - `scan_speed`: `fast`.
+      - `limit_crawler_scope`: `true`.
+      - `default_scanning_profile_id`: `11111111-1111-1111-1111-111111111111`.
+      - `excluded_paths`: gồm đủ 3 đường dẫn loại trừ.
+      - `custom_headers`: gồm `X-Security-Scan: DeepReview-Agent` và `X-Custom-Env: LocalTest`.
+      - `login`: dạng `automatic` với username `admin@juice-sh.op` và mật khẩu được mã hóa an toàn.
+    - Xóa dọn dẹp target thành công (`HTTP 204`), mật khẩu mục tiêu không bị lộ trong stdout/log.

@@ -19,6 +19,7 @@ from driver.client import AcunetixClient
 
 EXIT_CODE_ACUNETIX_NOT_READY = 10
 EXIT_CODE_AUTH_FAILED = 11
+EXIT_CODE_CONFIG_FAILED = 12
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deep Review Acunetix Scanner Driver")
@@ -31,6 +32,7 @@ def parse_args():
     parser.add_argument("--inputs-dir", default=None, help="Directory containing input files (.lsr, openapi)")
     parser.add_argument("--log-file", default=None, help="Optional path to write log output")
     parser.add_argument("--ready-timeout", type=int, default=60, help="Timeout in seconds waiting for Acunetix API readiness")
+    parser.add_argument("--clean-target", action="store_true", help="Delete target immediately after configuration (for testing/dry-run)")
     return parser.parse_args()
 
 def main():
@@ -91,6 +93,36 @@ def main():
     except Exception as e:
         logger.error(f"FATAL: Authentication initialization failed: {e}")
         sys.exit(EXIT_CODE_AUTH_FAILED)
+
+    # 6. Create Target & Apply ScanOptions Configuration (Task T2.4)
+    target_id = None
+    try:
+        target_id = client.create_target(
+            address=config.target_url,
+            description=f"Deep Review Scan - {config.scan_id}"
+        )
+        current_config = client.configure_target(
+            target_id=target_id,
+            scan_options=config.scan_options,
+            secrets=config.secrets
+        )
+        logger.info(
+            f"Target {target_id} successfully configured according to ScanOptions "
+            f"(profile='{config.scan_options.get('profile')}', speed='{current_config.get('scan_speed')}')."
+        )
+    except Exception as e:
+        logger.error(f"FATAL: Target creation/configuration failed: {e}")
+        if target_id:
+            try:
+                client.delete_target(target_id)
+            except Exception:
+                pass
+        sys.exit(EXIT_CODE_CONFIG_FAILED)
+
+    if args.clean_target and target_id:
+        logger.info(f"Cleaning up target {target_id} (--clean-target set)...")
+        client.delete_target(target_id)
+        logger.info("Target cleaned up successfully.")
 
     return 0
 
