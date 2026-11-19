@@ -19,6 +19,7 @@ from backend.services.scan_service import (
 )
 from backend.validation.scan_validator import ValidationError
 from backend.auth.authorization import UserContext, AuthorizationService
+from backend.metrics.metrics import get_global_metrics, MetricsCollector
 
 class ScanApiHandler:
     def __init__(
@@ -69,6 +70,14 @@ class ScanApiHandler:
 
         if method == "OPTIONS":
             return 204, headers_out, b""
+
+        # Route: /api/v1/metrics (Phase 3 - Task T3.13)
+        if route == "/api/v1/metrics":
+            if method == "GET":
+                return self._handle_get_metrics(query_params, headers_out)
+            else:
+                err_body = json.dumps({"error": f"Method {method} not allowed", "status": 405}).encode("utf-8")
+                return 405, headers_out, err_body
 
         # Route: /api/v1/scans
         if route == "/api/v1/scans":
@@ -277,3 +286,30 @@ class ScanApiHandler:
         except Exception as e:
             err_body = json.dumps({"error": f"Internal server error: {e}", "status": 500}).encode("utf-8")
             return 500, headers_out, err_body
+
+    def _handle_get_metrics(
+        self,
+        query_params: Dict[str, list],
+        headers_out: Dict[str, str]
+    ) -> Tuple[int, Dict[str, str], bytes]:
+        """Return aggregated operational metrics, counts, durations, and health alerts."""
+        job_lost_th = 2
+        cb_lost_th = 2
+        if "job_lost_threshold" in query_params and query_params["job_lost_threshold"]:
+            try:
+                job_lost_th = int(query_params["job_lost_threshold"][0])
+            except ValueError:
+                pass
+        if "callback_lost_threshold" in query_params and query_params["callback_lost_threshold"]:
+            try:
+                cb_lost_th = int(query_params["callback_lost_threshold"][0])
+            except ValueError:
+                pass
+
+        metrics_collector = getattr(self.scan_service, "metrics", None) or get_global_metrics()
+        summary = metrics_collector.get_summary(
+            job_lost_threshold=job_lost_th,
+            callback_lost_threshold=cb_lost_th
+        )
+        body = json.dumps(summary, indent=2, ensure_ascii=False).encode("utf-8")
+        return 200, headers_out, body

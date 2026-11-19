@@ -25,6 +25,7 @@ from backend.services.launcher import LauncherInterface, MockLauncher
 from backend.services.options_segregator import OptionsSegregator, PRESET_PROFILE_MAP
 from backend.services.state_machine import ScanStateMachine, InvalidStateTransitionError
 from backend.parsers.acunetix_parser import AcunetixReportParser, UnifiedReport
+from backend.metrics.metrics import MetricsCollector, get_global_metrics
 
 class ConcurrencyLimitError(Exception):
     def __init__(self, message: str = "Concurrency limit exceeded", status_code: int = 429):
@@ -53,13 +54,15 @@ class ScanService:
         state_machine: Optional[ScanStateMachine] = None,
         parser: Optional[AcunetixReportParser] = None,
         max_concurrent_scans: Optional[int] = None,
-        webhook_base_url: str = "http://127.0.0.1:8000"
+        webhook_base_url: str = "http://127.0.0.1:8000",
+        metrics: Optional[MetricsCollector] = None
     ):
         self.repo = repo
         self.launcher = launcher or MockLauncher()
         self.validator = validator or ScanValidator()
         self.state_machine = state_machine or ScanStateMachine(repo=self.repo)
         self.parser = parser or AcunetixReportParser()
+        self.metrics = metrics or get_global_metrics()
 
         # Configurable concurrency limit (R-09 / T0.9 default: 1)
         if max_concurrent_scans is not None:
@@ -138,6 +141,9 @@ class ScanService:
                 config=non_secret_config
             )
             self.repo.save_options_config(options_record)
+
+            if self.metrics:
+                self.metrics.record_scan_created(engine=engine, project_id=project_id)
 
         # Step 6: Dispatch to Launcher (Secrets passed to launcher and discarded from BE memory)
         try:

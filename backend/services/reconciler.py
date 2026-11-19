@@ -18,6 +18,7 @@ from typing import Optional, Dict, Any, List
 from backend.models.scan import ScanJob, ScanRepository, get_utc_now_iso
 from backend.services.launcher import LauncherInterface
 from backend.services.state_machine import ScanStateMachine, InvalidStateTransitionError
+from backend.metrics.metrics import MetricsCollector, get_global_metrics
 
 def parse_iso_timestamp(iso_str: Optional[str]) -> Optional[datetime]:
     if not iso_str:
@@ -41,7 +42,8 @@ class ScanReconciler:
         state_machine: Optional[ScanStateMachine] = None,
         logger: Optional[logging.Logger] = None,
         callback_grace_period_seconds: int = 60,
-        max_scan_duration_seconds: int = 1860  # 31 minutes
+        max_scan_duration_seconds: int = 1860,  # 31 minutes
+        metrics: Optional[MetricsCollector] = None
     ):
         self.repo = repo
         self.launcher = launcher
@@ -49,6 +51,7 @@ class ScanReconciler:
         self.logger = logger or logging.getLogger("deepreview_reconciler")
         self.callback_grace_period_seconds = callback_grace_period_seconds
         self.max_scan_duration_seconds = max_scan_duration_seconds
+        self.metrics = metrics or get_global_metrics()
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -120,6 +123,8 @@ class ScanReconciler:
                         error_code="JOB_LOST"
                     )
                     job_lost_count += 1
+                    if self.metrics:
+                        self.metrics.record_reconciler_closure("JOB_LOST")
                 except Exception as e_trans:
                     self.logger.error(f"Failed to transition scan {scan_id} to JOB_LOST: {e_trans}")
                 continue
@@ -150,6 +155,8 @@ class ScanReconciler:
                             error_code="CALLBACK_LOST"
                         )
                         callback_lost_count += 1
+                        if self.metrics:
+                            self.metrics.record_reconciler_closure("CALLBACK_LOST")
                     except Exception as e_trans:
                         self.logger.error(f"Failed to transition scan {scan_id} to CALLBACK_LOST: {e_trans}")
                     continue
@@ -187,6 +194,8 @@ class ScanReconciler:
                         error_code="SCAN_TIMEOUT"
                     )
                     timeout_count += 1
+                    if self.metrics:
+                        self.metrics.record_reconciler_closure("SCAN_TIMEOUT")
                 except Exception as e_trans:
                     self.logger.error(f"Failed to transition scan {scan_id} to SCAN_TIMEOUT: {e_trans}")
                 continue

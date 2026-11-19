@@ -863,6 +863,35 @@
     5. Quyền hủy lượt quét: `DEVELOPER` cố hủy scan bị chặn với HTTP 403. `SECURITY_LEAD` hủy thành công (200 OK).
     6. Toàn quyền Admin: `ADMIN` có toàn quyền tạo, xem, hủy trên bất kỳ project nào.
 
+### T3.13: Log có cấu trúc và đếm lượt theo trạng thái, mã lỗi (metrics); cảnh báo khi JOB_LOST hoặc CALLBACK_LOST tăng
+- **Đã làm**:
+  - Tạo `backend/logging/structured_logger.py`:
+    - Cài đặt `StructuredJsonFormatter` định dạng bản ghi log theo cấu trúc JSON chuẩn (1 dòng / 1 event): `timestamp` (ISO-8601 UTC), `level`, `logger`, `message`, cùng các trường ngữ cảnh `scan_id`, `project_id`, `engine`, `status`, `error_code`, `duration_ms`, `user_id`.
+    - Kết hợp chặt chẽ với `BackendSecretMaskingFilter` để che giấu 100% tokens, passwords, API keys thành `[REDACTED]`.
+  - Tạo `backend/metrics/metrics.py`:
+    - Lớp `MetricsCollector` thread-safe theo dõi toàn diện các chỉ số vận hành:
+      - Số lượt theo trạng thái vòng đời: `SCANNING`, `PARSING`, `COMPLETED`, `FAILED`.
+      - Số lượt theo mã lỗi: `JOB_LOST`, `CALLBACK_LOST`, `SCAN_TIMEOUT`, `PARSE_FAILED`, `LAUNCH_FAILED`, v.v.
+      - Phân bổ theo engine: `acunetix`, `fortify`.
+      - Đo lường thời gian thực thi: `avg_duration_seconds`, `min_duration_seconds`, `max_duration_seconds`.
+      - Tỷ lệ chiếm dụng trần đồng thời: `concurrency_utilization_percent`.
+    - Hệ thống cảnh báo tự động (`Alert`):
+      - Cảnh báo `CRITICAL: HIGH_JOB_LOST_RATE` khi số lần `JOB_LOST` vượt ngưỡng (mặc định >= 2), cảnh báo lỗi hạ tầng container / crash / OOM.
+      - Cảnh báo `WARNING: HIGH_CALLBACK_LOST_RATE` khi số lần `CALLBACK_LOST` vượt ngưỡng (mặc định >= 2), cảnh báo lỗi mạng hoặc webhook receiver không thể truy cập.
+  - Tích hợp metrics vào các thành phần cốt lõi:
+    - `ScanStateMachine`: Ghi nhận chuyển trạng thái và thời gian hoàn thành scan.
+    - `ScanService`: Ghi nhận tạo scan mới và phân loại engine.
+    - `ScanReconciler`: Ghi nhận các lượt đóng cưỡng bức do hạ tầng gặp sự cố (`JOB_LOST`, `CALLBACK_LOST`, `SCAN_TIMEOUT`).
+  - Thêm endpoint HTTP `GET /api/v1/metrics` trong `backend/api/scan_handler.py` trả về JSON báo cáo toàn diện chỉ số và danh sách cảnh báo chủ động.
+  - Viết kịch bản kiểm thử tự động `scripts/test_t313_metrics_and_structured_logs.py`.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/test_t313_metrics_and_structured_logs.py` PASS 100% cả 5 nhóm kiểm thử:
+    1. Structured JSON Logger & Secret Masking Filter: Xuất đúng định dạng JSON có đầy đủ thuộc tính ngữ cảnh và che phủ secret thành `[REDACTED]`.
+    2. Metrics Collector Counters & Durations: Đếm chính xác theo status, engine, error code; tính toán min/max/average duration chuẩn xác.
+    3. Automated Alerts: Kích hoạt đúng ngưỡng cảnh báo `CRITICAL` cho `HIGH_JOB_LOST_RATE` và `WARNING` cho `HIGH_CALLBACK_LOST_RATE`.
+    4. Service Integration: Tích hợp thông suốt giữa `ScanService`, `ScanStateMachine`, `ScanReconciler` và `MetricsCollector`.
+    5. GET /api/v1/metrics Endpoint: Phục vụ HTTP 200, trả về đầy đủ báo cáo metrics và cảnh báo tương ứng với tham số ngưỡng.
+
 
 
 

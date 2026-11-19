@@ -17,6 +17,7 @@ Enforces:
 
 import logging
 from typing import Optional, Set, Dict
+from datetime import datetime, timezone
 from backend.models.scan import (
     ScanJob,
     ScanRepository,
@@ -24,6 +25,7 @@ from backend.models.scan import (
     VALID_ERROR_CODES,
     get_utc_now_iso
 )
+from backend.metrics.metrics import MetricsCollector, get_global_metrics
 
 class InvalidStateTransitionError(Exception):
     """Raised when an illegal or out-of-order state transition is attempted."""
@@ -64,10 +66,12 @@ class ScanStateMachine:
     def __init__(
         self,
         repo: ScanRepository,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        metrics: Optional[MetricsCollector] = None
     ):
         self.repo = repo
         self.logger = logger or logging.getLogger("deepreview_state_machine")
+        self.metrics = metrics or get_global_metrics()
 
     def can_transition(self, current_status: str, target_status: str) -> bool:
         """Check if a transition from current_status to target_status is permitted."""
@@ -183,6 +187,23 @@ class ScanStateMachine:
             f"Scan {scan_id} state transition executed: '{current_status}' -> '{new_status}' "
             f"(error_code={error_code}, completed_at={final_completed_at})."
         )
+
+        # Record metrics
+        duration_sec = None
+        if new_status in self.TERMINAL_STATUSES and scan.created_at:
+            try:
+                c_time = datetime.fromisoformat(scan.created_at.replace("Z", "+00:00"))
+                duration_sec = (datetime.now(timezone.utc) - c_time).total_seconds()
+            except Exception:
+                pass
+
+        if self.metrics:
+            self.metrics.record_state_transition(
+                from_status=current_status,
+                to_status=new_status,
+                error_code=error_code,
+                duration_seconds=duration_sec
+            )
 
         updated_scan = self.repo.get_scan(scan_id)
         if not updated_scan:
