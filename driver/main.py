@@ -256,6 +256,8 @@ def main():
             severity_counts = (scan_info.get("current_session") or {}).get("severity_counts") or {}
             scan_result_payload = {
                 "scan_id": config.scan_id,
+                "target_id": target_id,
+                "target_url": config.target_url,
                 "acunetix_scan_id": scan_id,
                 "session_id": scan_session_id,
                 "status": "COMPLETED" if is_healthy else "FAILED",

@@ -1,0 +1,39 @@
+{
+  "actions": [
+    {
+      "type": "navigate",
+      "target": "http://host.docker.internal:3000/#/login",
+      "timeout": 15000,
+      "parameters": {
+        "friendly": "Navigate to Login"
+      }
+    },
+    {
+      "type": "change",
+      "target": "//*[@id='email']",
+      "parameters": {
+        "value": "admin@juice-sh.op"
+      }
+    },
+    {
+      "type": "change",
+      "target": "//*[@id='password']",
+      "parameters": {
+        "value": "admin123"
+      }
+    },
+    {
+      "type": "click",
+      "target": "//*[@id='loginButton']",
+      "parameters": {
+        "friendly": "Click Login"
+      }
+    }
+  ],
+  "restrictions": [
+    {
+      "url": "http://host.docker.internal:3000/#/logout"
+    }
+  ],
+  "config": {}
+}

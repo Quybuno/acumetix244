@@ -1,0 +1,50 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Juice Shop REST API",
+    "version": "1.0.0",
+    "description": "OWASP Juice Shop sample endpoints definition"
+  },
+  "paths": {
+    "/rest/products/search": {
+      "get": {
+        "summary": "Search products",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product search results"
+          }
+        }
+      }
+    },
+    "/api/Users": {
+      "get": {
+        "summary": "Get user list",
+        "responses": {
+          "200": {
+            "description": "User list"
+          }
+        }
+      }
+    },
+    "/rest/basket/1": {
+      "get": {
+        "summary": "Get basket items",
+        "responses": {
+          "200": {
+            "description": "Basket items"
+          }
+        }
+      }
+    }
+  }
+}

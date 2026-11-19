@@ -512,3 +512,30 @@
   - Kịch bản `scripts/test_t212_driver_image.py` chạy PASS 100% tất cả 4/4 bài kiểm tra.
   - Image sẵn sàng để tích hợp vào kiến trúc Pod giả (Giai đoạn 1) và khởi chạy thông qua Launcher ở Giai đoạn 3.
 
+---
+
+## CỔNG SANG GIAI ĐOẠN 3 (HOÀN THÀNH 100%)
+- **Yêu cầu từ `docs/TASKS.md`**:
+  > *"Thử driver trước khi nối vào BE: chạy driver riêng trên máy với một Acunetix đang chạy và một máy nhận webhook giả (một server nhỏ in ra nội dung nhận được). Khi chạy ổn mới đóng gói và chạy trong pod giả.*
+  > *Cổng sang giai đoạn 3: driver quét xong đích thử (T0.10) có đăng nhập và API, và máy nhận webhook giả nhận được kết quả đủ."*
+- **Kịch bản kiểm chứng**: `scripts/verify_gate_phase2.py`
+  - Đích thử thực tế: OWASP Juice Shop (`http://host.docker.internal:3000` / `http://127.0.0.1:3000`).
+  - Tệp chuỗi đăng nhập: `fixtures/juice_shop_login.lsr` (định dạng LSR JSON gồm các action navigate, change email/password, click loginButton).
+  - Tệp đặc tả API: `fixtures/juice_shop_openapi.json` (OpenAPI 3.0 với các REST endpoints của Juice Shop).
+  - Máy chủ webhook giả định: HTTP Server in ra nội dung payload nhận được lên console, kiểm tra token xác thực `X-Webhook-Token`.
+- **Kết quả kiểm tra chi tiết**:
+  1. **[PASS] CHECK 1 - Chạy driver độc lập trên máy host**:
+     - Driver kết nối thành công với Acunetix (`https://127.0.0.1:8888`), tạo target, nạp LSR và OpenAPI.
+     - Quét đích OWASP Juice Shop thành công trong 106.88s, kiểm tra post-scan health đạt chuẩn (`locations=123`, `is_healthy=True`).
+     - Target và dữ liệu scan được tự động xóa dọn dẹp sạch sẽ khỏi Acunetix (`DELETE /targets/{id}`).
+     - Mock Webhook Server nhận payload đầy đủ 100% (`status=COMPLETED`, `token=[VERIFIED]`, `timings`, `statistics`). Mã thoát `0`.
+  2. **[PASS] CHECK 2 - Chạy driver đóng gói trong Docker Container (Non-root UID 1000)**:
+     - Khởi chạy container `deepreview-acunetix-driver:local` với user non-root UID 1000, volume mounts bí mật/cấu hình/inputs `:ro`.
+     - Container quét đích thử OWASP Juice Shop thành công trong 107.46s.
+     - Mock Webhook Server nhận payload đầy đủ với kết quả `COMPLETED`. Mã thoát `0`.
+  3. **[PASS] CHECK 3 - Kiểm tra an toàn bí mật (Zero Secret Leakage)**:
+     - Quét toàn bộ stdout/stderr của cả hai lượt chạy, xác nhận mật khẩu admin, mật khẩu target và webhook token được che chắn an toàn 100%, không rò rỉ bất kỳ chuỗi nhạy cảm nào.
+- **Kết luận**:
+  - Toàn bộ 12 task của Giai đoạn 2 (`T2.1` -> `T2.12`) và toàn bộ tiêu chí của **Cổng sang giai đoạn 3** đã được kiểm chứng chạy thật thành công xuất sắc.
+
+
