@@ -24,6 +24,7 @@
 | T1.7 | Hoàn thành | 2026-11-19 | Lưu log container driver (và acunetix) ra tệp tmp/scans/<mã>/logs/driver.log trước khi dọn. Đọc được nguyên nhân lỗi dù container đã bị xóa. | Không |
 | T1.8 | Hoàn thành | 2026-11-19 | Dọn sạch toàn bộ container, volume, thư mục bí mật và tệp tạm theo nhãn scan-id=<mã>. Không làm ảnh hưởng container khác trên host. | Không |
 | T1.9 | Hoàn thành | 2026-11-19 | Hàm get_pod_status(scan_id) trả về cấu trúc JSON chuẩn: trạng thái pod, mã thoát của driver, danh sách container thiếu. Sẵn sàng cho BE tích hợp. | Không |
+| T1.10 | Hoàn thành | 2026-11-19 | Xây dựng hai script CLI launch.py và cleanup.py chạy tay với driver giả. Thấy trọn vẹn vòng đời dựng, chạy, driver thoát và dọn sạch 100%. | Không |
 
 ## Chi tiết từng task
 
@@ -268,3 +269,24 @@
     - Khi driver chạy xong thoát mã 0: trả về `status: "COMPLETED"`, `driver_exit_code: 0`.
     - Khi xóa cưỡng bức container `net`: hàm lập tức phát hiện và trả về `missing_containers: ["net"]`.
     - Dữ liệu chuẩn xác 100% để phục vụ BE ở Giai đoạn 3 (giao diện bộ khởi chạy Job và Reconciler).
+
+### T1.10: Hai script launch và cleanup chạy tay với driver giả
+- **Đã làm**:
+  - Xây dựng CLI `scripts/launch.py`:
+    - Nhận tham số: `scan_id`, `--duration` (giây chạy của driver), `--exit-code` (mã thoát tùy ý), `--secrets-file`, `--timeout-ready`, `--wait`.
+    - Tự động chuẩn bị secrets/inputs, khởi động nhóm container pod giả theo thứ tự và in kết quả JSON ra terminal.
+  - Xây dựng CLI `scripts/cleanup.py`:
+    - Nhận tham số: `scan_id`, `--preserve-logs`.
+    - Xóa toàn bộ container và volume của pod theo nhãn `scan-id`.
+    - Hỗ trợ lưu trữ log ra host để phân tích khi cần (`--preserve-logs`) hoặc dọn sạch triệt để toàn bộ thư mục tạm.
+- **Kết quả & Bằng chứng**:
+  - Chạy `python scripts/launch.py manual01 --duration 3 --wait`:
+    - Khởi động thành công 3 container: `scan-manual01-net`, `scan-manual01-acunetix`, `scan-manual01-driver`.
+    - Driver đọc được secret mount, chạy 3s và thoát mã 0.
+    - Script in kết quả trạng thái cuối: `status: "COMPLETED"`, `driver_exit_code: 0`.
+  - Chạy `python scripts/cleanup.py manual01 --preserve-logs`:
+    - Dọn sạch 3 container khỏi Docker (0 remaining).
+    - Bảo toàn log tại `tmp/scans/manual01/logs/driver.log` với nội dung ghi nhận đầy đủ.
+  - Chạy `python scripts/cleanup.py manual01`:
+    - Dọn sạch 100% thư mục tạm `tmp/scans/manual01` trên host.
+  - Vòng đời: Dựng -> Chạy -> Driver thoát -> Dọn sạch hoạt động chuẩn xác và trực quan qua dòng lệnh.
