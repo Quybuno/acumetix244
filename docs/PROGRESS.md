@@ -27,6 +27,7 @@
 | T1.10 | Hoàn thành | 2026-11-19 | Xây dựng hai script CLI launch.py và cleanup.py chạy tay với driver giả. Thấy trọn vẹn vòng đời dựng, chạy, driver thoát và dọn sạch 100%. | Không |
 | T2.1 | Hoàn thành | 2026-11-19 | Dựng khung dự án driver (driver/): đọc cấu hình/secrets, ghi log có cấu trúc gắn scan_id, che phủ 100% bí mật (SecretMaskingFilter & mask_data). | Không |
 | T2.2 | Hoàn thành | 2026-11-19 | Chờ API Acunetix sẵn sàng bằng thăm dò lặp lại có hạn chờ (Insecure TLS). Quá hạn thoát mã lỗi 10 (ACUNETIX_NOT_READY), không treo. | Không |
+| T2.3 | Hoàn thành | 2026-11-19 | Khởi tạo xác thực API (hỗ trợ cả API key trực tiếp và tạo key động qua Login SHA-256 + GraphQL generateApiKey). Gọi API kiểm tra GET /api/v1/targets thành công. | Không |
 
 ## Chi tiết từng task
 
@@ -333,3 +334,16 @@
   - Chạy kịch bản kiểm thử `scripts/test_t22_readiness.py`:
     - **Trường hợp thành công**: Kiểm tra trực tiếp với instance Acunetix đang chạy tại `https://127.0.0.1:8888`. Driver phát hiện API sẵn sàng sau 0.55s, ghi nhận `Acunetix API is READY` và thoát mã `0`.
     - **Trường hợp quá hạn**: Kiểm tra với endpoint không tồn tại `https://127.0.0.1:59999` với hạn chờ 4 giây. Driver thực hiện thăm dò lặp lại, phát hiện quá hạn sau đúng 4.52s, ghi log `Readiness check timed out` và kết thúc với mã lỗi `10` mà không hề bị treo hay block tiến trình.
+
+### T2.3: Khởi tạo instance và lấy thông tin xác thực API
+- **Đã làm**:
+  - Mở rộng lớp `AcunetixClient` trong `driver/client.py`:
+    - Phương thức `login_and_generate_api_key(email, password)`: đăng nhập qua `POST /api/v1/me/login` với mật khẩu băm SHA-256 (`hashlib.sha256`), trích xuất session token và gửi tới endpoint GraphQL `POST /graphql/` với mutation `mutation { generateApiKey }` kèm cookie `ui_session` để nhận API key vĩnh viễn (định dạng 65 ký tự hex).
+    - Phương thức `authenticate(api_key, email, password)`: hỗ trợ kiểm tra API key được cung cấp sẵn trước, nếu không có hoặc không hợp lệ sẽ tự động đăng nhập tài khoản quản trị để tạo API key động.
+    - Phương thức `check_auth()`: xác thực token bằng lệnh gọi `GET /api/v1/targets?l=1` yêu cầu quyền hạn đầy đủ.
+  - Cập nhật `driver/main.py`: tích hợp bước xác thực vào luồng chính, tự động đăng ký API key vào bộ lọc che dấu vết (`SecretMaskingFilter`) của logger, và xử lý mã thoát lỗi `11` (`EXIT_CODE_AUTH_FAILED`) nếu xác thực thất bại.
+- **Kết quả & Bằng chứng**:
+  - Chạy kịch bản kiểm thử `scripts/test_t23_auth.py`:
+    - **Test 1 (Đăng nhập động + GraphQL)**: Đăng nhập với tài khoản `admin@acunetix.com` / `Acunetix@123`, nhận session token, gọi GraphQL sinh API key và xác thực `GET /api/v1/targets` thành công (HTTP 200, thoát mã 0).
+    - **Test 2 (Dùng API key có sẵn)**: Xác thực trực tiếp qua header `X-Auth: <api_key>` thành công (HTTP 200, thoát mã 0).
+    - **Test 3 (Bắt lỗi đăng nhập sai)**: Thử đăng nhập với mật khẩu sai, bắt đúng lỗi `401 Unauthorized` từ API Acunetix và thoát với mã lỗi `11` mà không rò rỉ mật khẩu vào log.

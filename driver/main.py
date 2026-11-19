@@ -18,6 +18,7 @@ from driver.logger import setup_logger
 from driver.client import AcunetixClient
 
 EXIT_CODE_ACUNETIX_NOT_READY = 10
+EXIT_CODE_AUTH_FAILED = 11
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deep Review Acunetix Scanner Driver")
@@ -71,7 +72,26 @@ def main():
         logger.error(f"FATAL: Acunetix API failed to become ready within {args.ready_timeout}s.")
         sys.exit(EXIT_CODE_ACUNETIX_NOT_READY)
 
-    logger.info("Acuentix API readiness check passed successfully.")
+    logger.info("Acunetix API readiness check passed successfully.")
+
+    # 5. Initialize instance & obtain API authentication (Task T2.3)
+    admin_email, admin_password = config.get_admin_credentials()
+    try:
+        api_key = client.authenticate(
+            api_key=config.get_api_key(),
+            email=admin_email,
+            password=admin_password
+        )
+        # Register new api_key in logger mask filter
+        for handler in logger.handlers:
+            for flt in handler.filters:
+                if hasattr(flt, "add_secrets"):
+                    flt.add_secrets([api_key])
+        logger.info("Instance authentication verified. Ready to execute target configuration.")
+    except Exception as e:
+        logger.error(f"FATAL: Authentication initialization failed: {e}")
+        sys.exit(EXIT_CODE_AUTH_FAILED)
+
     return 0
 
 if __name__ == "__main__":
